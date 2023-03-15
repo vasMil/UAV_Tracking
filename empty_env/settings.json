@@ -8,11 +8,11 @@
 	"Vehicles": {
 		"EgoUAV": {
 			"VehicleType": "SimpleFlight",
-			"X": 350, "Y": 0, "Z": 0
+			"X": 0, "Y": 0, "Z": 0
 		},
 		"LeadingUAV": {
 			"VehicleType": "SimpleFlight",
-			"X": 0, "Y": 0, "Z": 0
+			"X": 3.5, "Y": 0, "Z": 0
 		}
 	},
 	"ApiServerPort": 41451

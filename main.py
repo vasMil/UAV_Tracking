@@ -1,7 +1,20 @@
-from models.LeadingUAV import LeadingUAV
 import time
+import airsim
+from models.LeadingUAV import LeadingUAV
 
-leadingUAV = LeadingUAV("LeadingUAV")
-egoUAV = LeadingUAV("EgoUAV")
+client = airsim.MultirotorClient()
+client.confirmConnection()
+print(f"Vehicle List: {client.listVehicles()}\n")
+
+leadingUAV = LeadingUAV(client, "LeadingUAV")
+egoUAV = LeadingUAV(client, "EgoUAV")
+
 print("SLEEP")
 time.sleep(10)
+
+#  CLEANUP
+# Reset the location of all Multirotors
+client.reset()
+# Do not forget to disable all Multirotors
+leadingUAV.disable()
+egoUAV.disable()

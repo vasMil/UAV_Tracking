@@ -1,6 +1,11 @@
 import airsim
 
 class UAV():
+    """
+    The base class for all UAV instances in the simulation:
+    - LeadingUAV
+    - EgoUAV
+    """
     def __init__(self, client: airsim.MultirotorClient, name: str) -> None:
         self.name = name
         self.client = client

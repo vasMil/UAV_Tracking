@@ -1,7 +1,6 @@
 import airsim
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
 
 from models.UAV import UAV
 from GlobalConfig import GlobalConfig as config
@@ -29,8 +28,4 @@ class EgoUAV(UAV):
         # HxWx3 (=144x256x3)
         img = img.reshape(resp.height, resp.width, 3)
         return img
-    
-    def view_video_feed(self):
-        plt.imshow(self._getImage())
-        plt.show()
     

@@ -1,8 +1,6 @@
 import time
-import math
 
 import airsim
-import matplotlib.pyplot as plt
 
 from GlobalConfig import GlobalConfig as config
 from models.LeadingUAV import LeadingUAV
@@ -12,6 +10,18 @@ from models.EgoUAV import EgoUAV
 # otherwise in each iteration of the game loop the
 # leading vehicle will "run out of moves" before the next iteration
 assert(config.move_duration > config.sleep_const)
+
+def view_video_feed(egoUAV: EgoUAV, leadingUAV: LeadingUAV):
+    import matplotlib.pyplot as plt
+    plt.ion()
+    for _ in range(0, config.game_loop_steps):
+        leadingUAV.random_move()
+        t_stop = time.time() + config.sleep_const
+        while time.time() < t_stop:
+            plt.imshow(egoUAV._getImage())
+            plt.show()
+            plt.pause(0.2)
+    plt.ioff()
 
 # Create a client to communicate with the UE
 client = airsim.MultirotorClient()
@@ -26,14 +36,9 @@ egoUAV.lastAction.join()
 leadingUAV.lastAction.join() # Just to make sure
 
 # The game loop
-plt.ion()
 for _ in range(0, config.game_loop_steps):
     leadingUAV.random_move()
-    t_stop = time.time() + config.sleep_const
-    while time.time() < t_stop:
-        egoUAV.view_video_feed()
-        plt.pause(0.2)
-plt.ioff()
+    time.sleep(config.sleep_const)
 
 # Reset the location of all Multirotors
 client.reset()

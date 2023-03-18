@@ -36,7 +36,8 @@ class GlobalConfig:
     sleep_const: float = 2
 
     # Number of steps the game loop should take
-    game_loop_steps: int = 50
+    game_loop_steps: int = 5
 
     # Minimum acceptable error
     eps = 1e-8
+    

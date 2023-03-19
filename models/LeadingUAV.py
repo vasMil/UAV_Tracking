@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 import math
 
 import airsim
@@ -31,8 +31,7 @@ class LeadingUAV(UAV):
         self._randomState = RandomState(seed)
 
 
-
-    def random_move(self) -> Future:
+    def random_move(self) -> Tuple[Future, torch.Tensor] :
         """
         Moves the UAV using random velocity values for the x and y axis and a height value for the z axis
         - vx: Should always be a positive value, we will not allow the leading UAV to go backwards
@@ -67,5 +66,5 @@ class LeadingUAV(UAV):
         assert(abs(velocity_vec.pow(2).sum().sqrt() - config.leading_velocity) < config.eps)
         self.lastAction = self.client.moveByVelocityAsync(vx, vy, vz, config.move_duration, vehicle_name=self.name)
         print(f"{self.name} moveByVelocityAsync: vx = {vx}, vy = {vy}, vz = {vz}")
-        return self.lastAction
+        return (self.lastAction, velocity_vec)
     

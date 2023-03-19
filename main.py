@@ -1,6 +1,7 @@
 import time
 
 import airsim
+import torch
 
 from GlobalConfig import GlobalConfig as config
 from models.LeadingUAV import LeadingUAV
@@ -16,9 +17,11 @@ def view_video_feed(egoUAV: EgoUAV, leadingUAV: LeadingUAV):
     plt.ion()
     for _ in range(0, config.game_loop_steps):
         leadingUAV.random_move()
+        # egoUAV._cheat_move(velocity_vec=velocity_vec)
+        egoUAV._cheat_move(position_vec=torch.tensor([*(leadingUAV.simGetObjectPose().position)]))
         t_stop = time.time() + config.sleep_const
         while time.time() < t_stop:
-            plt.imshow(egoUAV._getImage())
+            plt.imshow(egoUAV._getImage(view_mode=True))
             plt.show()
             plt.pause(0.2)
     plt.ioff()
@@ -35,11 +38,16 @@ egoUAV = EgoUAV(client, "EgoUAV")
 egoUAV.lastAction.join()
 leadingUAV.lastAction.join() # Just to make sure
 
-# The game loop
+# generate_train_data(egoUAV, leadingUAV)
+# view_video_feed(egoUAV, leadingUAV)
+# egoUAV.lastAction.join()
 for _ in range(0, config.game_loop_steps):
-    leadingUAV.random_move()
+    _, velocity_vec = leadingUAV.random_move()
+    # egoUAV._cheat_move(velocity_vec=velocity_vec)
+    egoUAV._cheat_move(position_vec=torch.tensor([*(leadingUAV.simGetObjectPose().position)]))
     time.sleep(config.sleep_const)
 
+# TODO: Wait for the lastActions to finish?
 # Reset the location of all Multirotors
 client.reset()
 # Do not forget to disable all Multirotors

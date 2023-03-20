@@ -16,7 +16,6 @@ class UAV():
         # In this case we won't allow it to go lower than the position at which it is placed after takeoff.
         self.min_z = client.simGetObjectPose(object_name=self.name).position.z_val
         self.last_collision_time_stamp = client.simGetCollisionInfo(vehicle_name=name).time_stamp
-        self.home_vec3r = airsim.Vector3r()
         self.enable()
 
     def disable(self):

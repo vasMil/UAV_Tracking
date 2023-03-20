@@ -24,9 +24,6 @@ class LeadingUAV(UAV):
         super().__init__(client, name)
         # Takeoff
         self.lastAction = client.takeoffAsync(vehicle_name=name)
-        # Should not allow the UAV to go below a certain height, since it may collide with the ground.
-        # In this case we won't allow it to go lower than the position at which it is placed after takeoff.
-        self.min_z = client.simGetGroundTruthKinematics(vehicle_name=self.name).position.z_val
         # Configure random state
         self._randomState = RandomState(seed)
 

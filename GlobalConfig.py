@@ -41,3 +41,12 @@ class GlobalConfig:
     # Minimum acceptable error
     eps = 1e-8
     
+    # Camera setting, change this if you change the defaults in setting.json (or vice versa)
+    img_height = 256
+    img_width = 144
+    aspect_ratio = img_height / img_width # (=16:9)
+    
+    # Pawn size
+    pawn_size_x = 0.98
+    pawn_size_y = 0.98
+    pawn_size_z = 0.29

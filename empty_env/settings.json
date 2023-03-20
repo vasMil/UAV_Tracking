@@ -4,7 +4,14 @@
 
 	"SimMode": "Multirotor",
 	"ClockSpeed": 1,
-	
+	"CameraDefaults": {
+		"CaptureSettings": [
+		  {
+			"Width": 256,
+			"Height": 144
+		  }
+		]
+	},	
 	"Vehicles": {
 		"EgoUAV": {
 			"VehicleType": "SimpleFlight",

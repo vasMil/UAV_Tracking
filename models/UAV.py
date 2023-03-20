@@ -12,6 +12,11 @@ class UAV():
     def __init__(self, client: airsim.MultirotorClient, name: str) -> None:
         self.name = name
         self.client = client
+        # Should not allow the UAV to go below a certain height, since it may collide with the ground.
+        # In this case we won't allow it to go lower than the position at which it is placed after takeoff.
+        self.min_z = client.simGetObjectPose(object_name=self.name).position.z_val
+        self.last_collision_time_stamp = client.simGetCollisionInfo(vehicle_name=name).time_stamp
+        self.home_vec3r = airsim.Vector3r()
         self.enable()
 
     def disable(self):
@@ -44,3 +49,12 @@ class UAV():
     
     def simGetGroundTruthEnvironment(self) -> airsim.EnvironmentState:
         return self.client.simGetGroundTruthEnvironment(vehicle_name=self.name)
+
+    def simGetCollisionInfo(self) -> airsim.CollisionInfo:
+        return self.client.simGetCollisionInfo(vehicle_name=self.name)
+    
+    def hasCollided(self) -> bool:
+        if self.simGetCollisionInfo().time_stamp > self.last_collision_time_stamp:
+            self.last_collision_time_stamp = self.simGetCollisionInfo().time_stamp
+            return 1
+        return 0

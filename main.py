@@ -6,14 +6,15 @@ import torch
 from GlobalConfig import GlobalConfig as config
 from models.LeadingUAV import LeadingUAV
 from models.EgoUAV import EgoUAV
+from gendata import generate_train_data
 
 # Make sure move_duration exceeds sleep_duration
 # otherwise in each iteration of the game loop the
 # leading vehicle will "run out of moves" before the next iteration
 assert(config.move_duration > config.sleep_const)
 
+import matplotlib.pyplot as plt
 def view_video_feed(egoUAV: EgoUAV, leadingUAV: LeadingUAV):
-    import matplotlib.pyplot as plt
     plt.ion()
     for _ in range(0, config.game_loop_steps):
         leadingUAV.random_move()
@@ -37,15 +38,11 @@ leadingUAV = LeadingUAV(client, "LeadingUAV", config.leadingUAV_seed)
 egoUAV = EgoUAV(client, "EgoUAV")
 egoUAV.lastAction.join()
 leadingUAV.lastAction.join() # Just to make sure
+egoUAV.home_vec3r = egoUAV.simGetObjectPose().position
+leadingUAV.home_vec3r = leadingUAV.simGetObjectPose().position
 
-# generate_train_data(egoUAV, leadingUAV)
-# view_video_feed(egoUAV, leadingUAV)
-# egoUAV.lastAction.join()
-for _ in range(0, config.game_loop_steps):
-    _, velocity_vec = leadingUAV.random_move()
-    # egoUAV._cheat_move(velocity_vec=velocity_vec)
-    egoUAV._cheat_move(position_vec=torch.tensor([*(leadingUAV.simGetObjectPose().position)]))
-    time.sleep(config.sleep_const)
+for _ in range(0, 2):
+    generate_train_data(egoUAV, leadingUAV)
 
 # TODO: Wait for the lastActions to finish?
 # Reset the location of all Multirotors

@@ -9,7 +9,7 @@ from models.LeadingUAV import LeadingUAV
 from GlobalConfig import GlobalConfig as config
 
 
-def generate_training_data():
+def generate_training_data(num_samples: int = 1):
     # Create a client to communicate with the UE
     client = airsim.MultirotorClient()
     client.confirmConnection()
@@ -29,7 +29,6 @@ def generate_training_data():
     ego_home_vec3r = egoUAV.simGetGroundTruthKinematics().position
     lead_home_vec3r = leadingUAV.simGetGroundTruthKinematics().position
 
-    num_samples: int = 2
     s: int = 0
     while s < num_samples:
         success = create_sample(egoUAV, leadingUAV, init_lead_ego_dist)
@@ -50,18 +49,18 @@ def generate_training_data():
 def create_sample(egoUAV: EgoUAV, leadingUAV: LeadingUAV, init_lead_ego_dist: airsim.Vector3r) -> bool:
     # Move the ego vehicle at a random location
     egoUAV.moveToPositionAsync(
-        random.uniform(-10, 10),
-        random.uniform(-10, 10),
-        random.uniform(-10, egoUAV.min_z)
+        random.uniform(*config.rand_move_box_x),
+        random.uniform(*config.rand_move_box_y),
+        random.uniform(*config.rand_move_box_z)
     ).join()
 
     if(egoUAV.hasCollided()): 
-        print("Collision detected, please restart the train data generation")
+        print("Collision detected, may need to restart!")
         return False
 
     # Decide (randomly) on the offset of the leadingUAV in relationship with the egoUAV
     # on the x axis
-    random_dist_from_ego_x = random.uniform(3, 15)
+    random_dist_from_ego_x = random.uniform(config.min_dist, config.max_dist)
     offset = airsim.Vector3r(random_dist_from_ego_x, 0, 0)
     
     # Using the FOV (90deg both horizontally and vertically) of the camera, 
@@ -94,8 +93,8 @@ def create_sample(egoUAV: EgoUAV, leadingUAV: LeadingUAV, init_lead_ego_dist: ai
     # the scaling of the image (aspect ratio) limits the vertical dimension.
     # The division with the aspect_ratio of the camera would not be necessary if
     # it had an aspect ratio of 1:1.
-    max_global_y = max_dist_y - config.pawn_size_x
-    min_global_y = - max_dist_y + config.pawn_size_x
+    max_global_y = max_dist_y - (config.pawn_size_x/2 + config.pawn_size_y/2)
+    min_global_y = - max_dist_y + (config.pawn_size_x/2 + config.pawn_size_y/2)
 
     min_global_z = - max_dist_z/config.aspect_ratio + (config.pawn_size_z/2 + config.pawn_size_x/2)
     max_global_z = max_dist_z/config.aspect_ratio - (config.pawn_size_z/2 + config.pawn_size_x/2)
@@ -110,20 +109,16 @@ def create_sample(egoUAV: EgoUAV, leadingUAV: LeadingUAV, init_lead_ego_dist: ai
 
     # Adjust the z axis so the leading drone does not collide with the ground
     if lead_local_pos.z_val > leadingUAV.min_z:
-        print("Normalized!")
         lead_local_pos.z_val = leadingUAV.min_z
 
     # Move the leadingUAV to those global coordinates
-    # print("lead_local_pos (target position):", *lead_local_pos)
-    # print("lead_global_pos: (current global position)", *leadingUAV.simGetObjectPose().position)
     leadingUAV.moveToPositionAsync(*lead_local_pos).join()
-    # print("lead_global_pos (achieved global position)", *leadingUAV.simGetObjectPose().position)
     if(leadingUAV.hasCollided()): 
-        print("Collision detected, please restart the train data generation")
+        print("Collision detected, may need to restart!")
         return False
 
     # Wait for the leadingUAV to stop moving
-    time.sleep(7)
+    time.sleep(config.wait_stationarity)
     plt.imshow(egoUAV._getImage(view_mode=True))
     plt.show()
 

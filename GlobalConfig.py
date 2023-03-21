@@ -4,10 +4,6 @@ class GlobalConfig:
     """ Contains all the configuration options used in this project """
     # The seed used for the LeadingUAV random movements
     leadingUAV_seed: Optional[int] = 1
-    
-    # Decide if the movements of the LeadingUAV should be 
-    # dependant to the current direction of the vehicle (smooth movement)
-    leadingUAV_smooth: bool = False
 
     # The magnitude of the velocity vector (in 3D space)
     leading_velocity: float = 4.
@@ -50,3 +46,14 @@ class GlobalConfig:
     pawn_size_x = 0.98
     pawn_size_y = 0.98
     pawn_size_z = 0.29
+
+    # Data generation
+    # Seconds to wait for the UAVs to stop moving before capturing the image
+    wait_stationarity = 7
+    # Bounds for random distance between the two UAVs
+    min_dist = 3
+    max_dist = 15
+    # Box to allow random movement of the egoUAV in
+    rand_move_box_x = (-10, 10)
+    rand_move_box_y = (-10, 10)
+    rand_move_box_z = (-10, -1) # Min dist from the ground is -1 (i.e. 1m above ground level)

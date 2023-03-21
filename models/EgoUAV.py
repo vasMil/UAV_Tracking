@@ -33,12 +33,13 @@ class EgoUAV(UAV):
             )[0]
         # Convert the string to a 1D numpy array (dtype = uint8)
         img = np.fromstring(resp.image_data_uint8, dtype=np.uint8)
+        # Reshape it into the proper tensor dimensions
+        img = np.reshape(img, [resp.height, resp.width, 3])
         # Convert the numpy array to a pytorch tensor
         if not view_mode:
-            img = torch.from_numpy(img).type(dtype=torch.float)
-        img = torch.from_numpy(img)
-        # Reshape it into the proper tensor dimensions
-        img = img.reshape(resp.height, resp.width, 3) if view_mode else img.reshape(3, resp.height, resp.width)
+            img = T.ToTensor()(img)
+        else:
+            img = torch.from_numpy(img)
         return img
     
     def _cheat_move(

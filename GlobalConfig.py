@@ -57,3 +57,12 @@ class GlobalConfig:
     rand_move_box_x = (-10, 10)
     rand_move_box_y = (-10, 10)
     rand_move_box_z = (-10, -1) # Min dist from the ground is -1 (i.e. 1m above ground level)
+    
+    # The sample images are stored as (image_index).(fromat), where the image_index is a number
+    # in [0,9999] thus we add leading zeros to have a uniform representation of the indexes  
+    filename_leading_zeros = 4
+
+    # The position calculated inside create_sample is slightly different by the one calculated inside
+    # generate_training_data, because when capturing those the UAVs are not completely stationary.
+    # If you want to minimize this allowed threshold you will have to increase wait_stationarity. 
+    measurement_threshold = (0.1, 0.1, 0.1)

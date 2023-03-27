@@ -17,24 +17,29 @@ class UAV():
         self.min_z = client.simGetObjectPose(object_name=self.name).position.z_val
         self.last_collision_time_stamp = client.simGetCollisionInfo(vehicle_name=name).time_stamp
         self.enable()
+        # Perform takeoff
+        self.lastAction = client.takeoffAsync(vehicle_name=name)
 
-    def disable(self):
+    def disable(self) -> None:
         self.client.armDisarm(False, vehicle_name=self.name)
         self.client.enableApiControl(False, vehicle_name=self.name)
      
-    def enable(self):
+    def enable(self) -> None:
         self.client.enableApiControl(True, vehicle_name=self.name)
         self.client.armDisarm(True, vehicle_name=self.name)
      
     def moveToPositionAsync(self, x, y, z, velocity=config.leading_velocity) -> Future:
         """
-        Reminder: The airsim API uses the world frame!
+        Reminder: The airsim API uses the world frame
+        ((0,0,0) is the location where the drone spawned)!
         (source: https://github.com/microsoft/AirSim/issues/4413)
         """
-        return self.client.moveToPositionAsync(x, y, z, velocity=velocity, vehicle_name=self.name)
+        self.lastAction = self.client.moveToPositionAsync(x, y, z, velocity=velocity, vehicle_name=self.name)
+        return self.lastAction
     
-    def moveByVelocityAsync(self, vx, vy, vz, duration):
-        return self.client.moveByVelocityAsync(vx, vy, vz, duration, vehicle_name=self.name)
+    def moveByVelocityAsync(self, vx, vy, vz, duration) -> Future:
+        self.lastAction = self.client.moveByVelocityAsync(vx, vy, vz, duration, vehicle_name=self.name)
+        return self.lastAction
 
     def simGetObjectPose(self) -> airsim.Pose:
         """ Returns the Pose of the current vehicle, position is in world coordinates """

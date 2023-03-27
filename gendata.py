@@ -77,8 +77,9 @@ def generate_training_data(
             s += 1
         else:
             # Return home and retry
-            egoUAV.moveToPositionAsync(*ego_home_vec3r)
-            leadingUAV.moveToPositionAsync(*lead_home_vec3r)
+            print("returning back home")
+            egoUAV.moveToPositionAsync(*ego_home_vec3r).join()
+            leadingUAV.moveToPositionAsync(*lead_home_vec3r).join()
 
     # Reset the location of all Multirotors
     client.reset()

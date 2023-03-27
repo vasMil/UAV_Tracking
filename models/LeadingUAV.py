@@ -1,5 +1,4 @@
 from typing import Optional, Tuple
-import math
 
 import airsim
 from msgpackrpc.future import Future
@@ -22,13 +21,11 @@ class LeadingUAV(UAV):
             seed: Optional[int] = None
         ) -> None:
         super().__init__(client, name)
-        # Takeoff
-        self.lastAction = client.takeoffAsync(vehicle_name=name)
         # Configure random state
         self._randomState = RandomState(seed)
 
 
-    def random_move(self) -> Tuple[Future, torch.Tensor] :
+    def random_move(self) -> Tuple[Future, torch.Tensor]:
         """
         Moves the UAV using random velocity values for the x and y axis and a height value for the z axis
         - vx: Should always be a positive value, we will not allow the leading UAV to go backwards

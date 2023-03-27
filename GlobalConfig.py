@@ -20,13 +20,15 @@ class GlobalConfig:
     # calling .join() on an Async function will result to all UAVs to wait on that Future.
     # Thus we need a sleep constant to wait on, as the other UAVs continue with their movements and
     # the current drone applies the Async movement, this way we do not overwhelm the server port.
-    # TODO: Maybe in the future we need to use two clients, one for each UAV, each interacting with AirSim using
+    # TODO: Maybe in the future we need to use two clients, one for each UAV,
+    # each interacting with AirSim using
     # different ports, thus .join() should be allowed.
-    # AirSim discussions: 
+    # AirSim discussions:
     # - https://github.com/microsoft/AirSim/issues/2971
     # - https://github.com/microsoft/AirSim/issues/2974
     # As a reminder: (source: https://microsoft.github.io/AirSim/apis/)
-    # If you start another command then it automatically cancels the previous task and starts new command. 
+    # If you start another command then it automatically cancels the previous task and 
+    # starts new command.
     # This allows to use pattern where your coded continuously does the sensing, 
     # computes a new trajectory to follow and issues that path to vehicle in AirSim.
     sleep_const: float = 2
@@ -36,12 +38,12 @@ class GlobalConfig:
 
     # Minimum acceptable error
     eps = 1e-8
-    
+
     # Camera setting, change this if you change the defaults in setting.json (or vice versa)
     img_height = 256
     img_width = 144
     aspect_ratio = img_height / img_width # (=16:9)
-    
+
     # Pawn size
     pawn_size_x = 0.98
     pawn_size_y = 0.98
@@ -57,12 +59,14 @@ class GlobalConfig:
     rand_move_box_x = (-10, 10)
     rand_move_box_y = (-10, 10)
     rand_move_box_z = (-10, -1) # Min dist from the ground is -1 (i.e. 1m above ground level)
-    
+
     # The sample images are stored as (image_index).(fromat), where the image_index is a number
-    # in [0,9999] thus we add leading zeros to have a uniform representation of the indexes  
+    # in [0,9999] thus we add leading zeros to have a uniform representation of the indexes
     filename_leading_zeros = 4
 
-    # The position calculated inside create_sample is slightly different by the one calculated inside
-    # generate_training_data, because when capturing those the UAVs are not completely stationary.
-    # If you want to minimize this allowed threshold you will have to increase wait_stationarity. 
+    # The position calculated inside create_sample is slightly different
+    # by the one calculated inside generate_training_data,
+    # because when capturing those the UAVs are not completely stationary.
+    # If you want to minimize this allowed threshold you will have to
+    # increase wait_stationarity.
     measurement_threshold = (0.1, 0.1, 0.1)

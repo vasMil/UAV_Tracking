@@ -4,6 +4,7 @@ import airsim
 from msgpackrpc.future import Future
 import numpy as np
 import torch
+from torchvision import transforms as T
 
 from models.UAV import UAV
 from GlobalConfig import GlobalConfig as config
@@ -11,8 +12,6 @@ from GlobalConfig import GlobalConfig as config
 class EgoUAV(UAV):
     def __init__(self, client: airsim.MultirotorClient, name: str) -> None:
         super().__init__(client, name)
-        # Takeoff
-        self.lastAction = client.takeoffAsync(vehicle_name=name)
 
 
     def _getImage(self, view_mode: bool = False) -> torch.Tensor:
@@ -41,6 +40,7 @@ class EgoUAV(UAV):
         else:
             img = torch.from_numpy(img)
         return img
+    
     
     def _cheat_move(
             self, 

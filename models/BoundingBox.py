@@ -15,20 +15,26 @@ class BoundingBox():
 
     # TODO: Update the code to support multiple BoundingBoxes with different labels for each image.
     """
-    def __init__(self, x: float, y: float, height: float, width: float, img_name: str) -> None:
+    def __init__(self,
+                 img_name: str, img_height: int, img_width: int,
+                 x: float, y: float, height: float, width: float
+        ) -> None:
+        # Why is scale required: https://labelstud.io/tags/rectanglelabels.html
+        self.scale_y = lambda y: y * (img_height / 100)
+        self.scale_x = lambda x: x * (img_width / 100)
+
         self.img_name = img_name
-        self.x1 = x
-        self.y1 = y
-        self.height = height
-        self.width = width
-        self.x2 = x + width
-        self.y2 = y + height
-        self.area = height*width
+        self.x1 = self.scale_x(x)
+        self.y1 = self.scale_y(y)
+        self.x2 = self.scale_x(x + width)
+        self.y2 = self.scale_y(y + height)
+        self.area = self.scale_y(height) * self.scale_x(width)
 
     def __str__(self) -> str:
         return f"BoundingBox: \
-            \n\t x = {self.x1}, y = {self.y1} \
-            \n\t height = {self.height}, width = {self.width}, area = {self.area} \
+            \n\t x1 = {self.x1}, y1 = {self.y1} | top left pixel \
+            \n\t x2 = {self.x2}, y2 = {self.y2} | bottom right pixel \
+            \n\t area = {self.area} \
             \n\t img_name = {self.img_name}"
     
     def to_dict(self) -> Dict[str, torch.Tensor]:
@@ -54,10 +60,12 @@ class BoundingBoxFactory():
         with open(json_file) as f:
             json_obj = json.load(f)
         file_upload = [str(d["file_upload"]).split("-")[-1] for d in json_obj]
-        annotations = [d["annotations"][0]["result"][0]["value"] for d in json_obj]
+        result = [d["annotations"][0]["result"][0] for d in json_obj]
+        value = [r["value"] for r in result]
+        img_dim = pd.DataFrame(result)[["original_width", "original_height"]]
+        value = pd.DataFrame(value).drop(["rotation"], axis=1)
         file_upload = pd.DataFrame(file_upload)
-        annotations = pd.DataFrame(annotations).drop(["rotation", "rectanglelabels"], axis=1)
-        self.df = pd.concat([file_upload, annotations], axis=1)
+        self.df = pd.concat([file_upload, img_dim, value], axis=1)
         self.df.columns.values[0] = "img_name"
 
     # def get_bounding_box(img_name: str) -> BoundingBox:
@@ -68,7 +76,10 @@ class BoundingBoxFactory():
         Returns a Tuple with all the bounding box data that are in json_file,
         organized as BoundingBox objects.
         """
-        return tuple(BoundingBox(a.x, a.y, a.height, a.width, a.img_name) for a in self.df.itertuples())
+        return tuple(
+                BoundingBox(a.img_name, a.original_height, a.original_width, a.x, a.y, a.height, a.width) 
+                    for a in self.df.itertuples()
+                )
 
 
 class BoundingBoxDataset(Dataset):

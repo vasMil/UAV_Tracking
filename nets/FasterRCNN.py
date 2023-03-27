@@ -1,11 +1,13 @@
-from typing import Optional, Dict
+from typing import Dict
 
 import torch
 from torch import optim, nn
 import torch.nn as nn
 from torch.utils.data import DataLoader
+
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 
+import matplotlib.pyplot as plt
 
 from models.BoundingBox import BoundingBoxDataset
 
@@ -25,9 +27,11 @@ class FasterRCNN(nn.Module):
         dataloader = DataLoader(dataset, batch_size=4, shuffle=True, collate_fn=self._collate_fn)
         self.model.train()
         for batch_idx, (images, target) in enumerate(dataloader):
-            print(images[0].shape, target[0]["boxes"].shape, target[0]["labels"].shape)
-            out = self.model(images, target)
-            print(out)
+            if batch_idx == 3:
+                self._show_bounding_boxes_batch(images, target)
+                plt.show()
+            # out = self.model(images, target)
+            # print(out)
 
     def _collate_fn(self, data):
         """ 
@@ -46,8 +50,33 @@ class FasterRCNN(nn.Module):
         for d in data:
             images.append(d["image"])
             temp_dict = {}
-            # Unsqueeze is required here because there are no other 
+            # Unsqueeze is required here because there are no other boxes.
+            # Since fasterrcnn_resnet50_fpn requires we pass a 2d FloatTensor
+            # where dim0 is the number of boxes in the current image and dim1
+            # is the bounds of those boxes.
             temp_dict["boxes"] = d["bounding_box"]["boxes"].unsqueeze(0)
             temp_dict["labels"] = d["bounding_box"]["labels"]
             target.append(temp_dict)
         return images, target
+
+    def _show_bounding_boxes_batch(self, images_batch: torch.Tensor, target_batch: list[Dict[str, torch.Tensor]]):
+        """Show image with landmarks for a batch of samples."""
+        batch_size = len(images_batch)
+        fig = plt.figure(1)
+        plt.title('Batch from dataloader')
+        plt.axis('off')
+
+        for i in range(batch_size):
+            tens = target_batch[i]["boxes"][0]
+            x = []
+            y = []
+            ax = fig.add_subplot(1, batch_size, i+1)
+            ax.imshow(images_batch[i].permute(1, 2, 0))
+            for (i, el) in enumerate(tens):
+                if i % 2 == 0:
+                    x.append(el.item())
+                else:
+                    y.append(el.item())
+            print(x, y)
+            ax.scatter(x, y, s=5, c='r')
+

@@ -77,6 +77,5 @@ class FasterRCNN(nn.Module):
                     x.append(el.item())
                 else:
                     y.append(el.item())
-            print(x, y)
             ax.scatter(x, y, s=5, c='r')
 

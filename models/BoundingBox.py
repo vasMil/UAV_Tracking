@@ -62,7 +62,7 @@ class BoundingBoxFactory():
         # of each bounding box. In order to use that label
         # in a torch NN I need to convert it to an integer.
         self.label_mapper = {
-            "Multirotor": 0
+            "Multirotor": 1
         }
         with open(json_file) as f:
             json_obj = json.load(f)
@@ -81,9 +81,6 @@ class BoundingBoxFactory():
         # Concatenate the DataFrames into one
         self.df = pd.concat([file_upload, img_dim, value], axis=1)
         self.df.columns.values[0] = "img_name"
-
-    # def get_bounding_box(img_name: str) -> BoundingBox:
-    #     pass
 
     def get_all_bounding_boxes(self) -> Tuple[BoundingBox]:
         """

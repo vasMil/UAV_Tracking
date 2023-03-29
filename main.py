@@ -47,7 +47,48 @@
 # leadingUAV.disable()
 # egoUAV.disable()
 
-from nets.FasterRCNN import FasterRCNN
+import torch
+from torch.utils.data import DataLoader
 
-frcnn = FasterRCNN(root_dir="data/empty_map/", json_labels="data/empty_map/empty_map.json")
-frcnn.train()
+from nets.FasterRCNN import FasterRCNN
+from models.BoundingBox import BoundingBoxDataset
+
+
+
+# Fast test
+print(f"Allocated CUDA memory before network initialization: {torch.cuda.memory_allocated(0)}")
+frcnn = FasterRCNN(root_train_dir="data/empty_map/train/", json_train_labels="data/empty_map/train/empty_map.json",
+                   root_test_dir="data/empty_map/test/", json_test_labels="data/empty_map/test/empty_map.json")
+print(f"Allocated CUDA memory right after network initialization: {torch.cuda.memory_allocated(0)}")
+
+frcnn.load("./nets/trained/mdl")
+
+dataset = BoundingBoxDataset(
+            root_dir="data/empty_map/train/", 
+            json_file="data/empty_map/train/empty_map.json"
+          )
+dataloader = DataLoader(
+                dataset, batch_size=4, shuffle=True, 
+                collate_fn=frcnn._collate_fn
+            )
+
+images, targets = next(iter(dataloader))
+dev_images = [image.to(torch.device("cuda")) for image in images]
+frcnn.model.eval()
+dev_preds = frcnn.model(dev_images)
+pred = []
+for dev_pred in dev_preds:
+  temp = {}
+  temp["boxes"] = []
+  temp["boxes"].append(dev_pred["boxes"].to(torch.device("cpu")))
+  pred.append(temp)
+frcnn._show_bounding_boxes_batch(images, pred)
+print(f"Allocated CUDA memory before deleting evaluation data: {torch.cuda.memory_allocated(0)}")
+del dev_preds
+del dev_images
+print(f"Allocated CUDA memory after deleting evaluation data: {torch.cuda.memory_allocated(0)}")
+
+del frcnn.model
+print(f"Allocated CUDA memory after deleting frcnn.model: {torch.cuda.memory_allocated(0)}")
+del frcnn
+print(f"Allocated CUDA memory after deleting frcnn: {torch.cuda.memory_allocated(0)}")

@@ -208,6 +208,32 @@ class FasterRCNN():
         time_elapsed = time.time() - since
         print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
 
+
+    def visualize_evaluation(self, batch_size: int = 1):
+        dataset = BoundingBoxDataset(
+                    root_dir="data/empty_map/train/", 
+                    json_file="data/empty_map/train/empty_map.json"
+                  )
+        dataloader = DataLoader(
+                        dataset, batch_size=batch_size, shuffle=True,
+                        collate_fn=self._collate_fn
+                    )
+
+        images, _ = next(iter(dataloader))
+        dev_images = [image.to(torch.device("cpu")) for image in images]
+        self.model.eval()
+        dev_preds = self.model(dev_images)
+        # Move predictions (stored in device) to the cpu
+        pred = []
+        for dev_pred in dev_preds:
+          temp = {}
+          temp["boxes"] = []
+          temp["boxes"].append(dev_pred["boxes"].to(torch.device("cpu")))
+          pred.append(temp)
+        # Display the predicted bounding boxes
+        self._show_bounding_boxes_batch(images, pred)
+
+
     def _collate_fn(self, data: list[BoundBoxDataset_Item]) -> Tuple[list[torch.Tensor], list[Dict[str, torch.Tensor]]]:
         """ 
         Created a custom collate_fn, because the default one stacks vertically

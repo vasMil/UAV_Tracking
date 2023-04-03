@@ -186,11 +186,13 @@ def create_sample(
     global_offset = leadingUAV.simGetObjectPose().position - egoUAV.simGetObjectPose().position
     
     # Return the sample
-    return [img, [*global_offset]]
+    # TODO: fix the types
+    return [img, [*global_offset]] # type: ignore 
 
 
 def getLastImageIdx(csv_df: pd.DataFrame) -> int:
     if csv_df.empty:
         return -1
-    return int(csv_df.iloc[-1, 0].split(".")[0])
+    # TODO: fix the types
+    return int(csv_df.iloc[-1, 0].split(".")[0]) # type: ignore
     

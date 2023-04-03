@@ -1,5 +1,5 @@
 import os
-from typing import Tuple, Dict, Union
+from typing import Tuple, TypedDict, Dict, Union
 
 import pandas as pd
 import json
@@ -96,6 +96,10 @@ class BoundingBoxFactory():
             )
         
 
+class BoundBoxDataset_Item(TypedDict):
+    image: torch.Tensor
+    bounding_box: Dict[str, torch.Tensor]
+
 
 class BoundingBoxDataset(Dataset):
     # TODO: Update the code to support multiple BoundingBoxes with different labels for each image.
@@ -108,15 +112,14 @@ class BoundingBoxDataset(Dataset):
     def __len__(self):
         return len(self._bounding_boxes)
     
-    def __getitem__(self, idx: int) -> Dict[str, Union[torch.Tensor, Dict[str, Union[torch.Tensor, str]]]]:
+    def __getitem__(self, idx: int) -> BoundBoxDataset_Item:
         img_path = os.path.join(self.root_dir,
                                 self._bounding_boxes[idx].img_name)
         image = ConvertImageDtype(torch.float)(read_image(img_path))
         bbox = self._bounding_boxes[idx]
-        sample = {"image": image, "bounding_box": bbox.to_dict()}
+        sample: BoundBoxDataset_Item = {"image": image, "bounding_box": bbox.to_dict()}
         
         if self.transform:
             sample["image"] = self.transform(sample["image"])
         
         return sample
-

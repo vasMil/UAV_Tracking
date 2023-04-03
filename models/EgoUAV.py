@@ -50,13 +50,17 @@ class EgoUAV(UAV):
         """
         This function is designed to help me determine what information to use as ground truth, when
         training the neural network.
-        You should exectly one of the two arguments!
+        You should specify exactly one of the two arguments!
         - position_vec: if specified, should contain the latest position of the leadingUAV
         - velocity_vec: if specified, should contain the velocities used by moveByVelocity() method on the last call for the leadingUAV
         """
         if ((position_vec is None and velocity_vec is None) or \
              (position_vec is not None and velocity_vec is not None)):
             raise Exception("EgoUAV::_cheat_move: Exactly one of two arguments should not be None")
-        self.lastAction = self.moveToPositionAsync(*(position_vec.tolist())) if position_vec is not None \
-                            else self.moveByVelocityAsync(*(velocity_vec.tolist()), config.move_duration)
+        
+        if velocity_vec is not None:
+            self.lastAction = self.moveByVelocityAsync(*(velocity_vec.tolist()), duration=config.move_duration)
+        elif position_vec is not None:
+            self.lastAction = self.moveToPositionAsync(*(position_vec.tolist()))
+
         return self.lastAction

@@ -12,7 +12,7 @@ class GlobalConfig:
     max_vx, max_vy, max_vz = 4.,  1.,  0.2
     min_vx, min_vy, min_vz = 0., -1., -0.2
 
-    # How much time should each move airsim api call last for 
+    # How much time should each move airsim api call last for
     # (ex. moveByVelocityAsync, duration argument)
     move_duration: float = 4
 
@@ -70,3 +70,20 @@ class GlobalConfig:
     # If you want to minimize this allowed threshold you will have to
     # increase wait_stationarity.
     measurement_threshold = (0.1, 0.1, 0.1)
+
+    # FasterRCNN constants
+    num_epochs = 25
+    batch_size = 2
+    num_workers = 0
+    sgd_learning_rate = 0.001
+    sgd_momentum = 0.9
+    sgd_weight_decay = 0.0005
+    scheduler_milestones = [100]
+    scheduler_gamma = 0.1
+
+    # Pytorch Profiler constants
+    profile = False
+    prof_wait = 1
+    prof_warmup = 1
+    prof_active = 3
+    prof_repeat = 1

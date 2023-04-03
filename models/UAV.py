@@ -41,15 +41,15 @@ class UAV():
         self.lastAction = self.client.moveByVelocityAsync(vx, vy, vz, duration, vehicle_name=self.name)
         return self.lastAction
 
+    def getMultirotorState(self) -> airsim.MultirotorState:
+        return self.client.getMultirotorState(vehicle_name=self.name)
+
     def simGetObjectPose(self) -> airsim.Pose:
         """ Returns the Pose of the current vehicle, position is in world coordinates """
         return self.client.simGetObjectPose(object_name=self.name)
     
     def simGetGroundTruthKinematics(self) -> airsim.KinematicsState:
         return self.client.simGetGroundTruthKinematics(vehicle_name=self.name)
-    
-    def simSetKinematics(self, state: airsim.KinematicsState, ignore_collision: bool) -> bool:
-        return self.client.simSetKinematics(state, ignore_collision, vehicle_name=self.name)
     
     def simGetGroundTruthEnvironment(self) -> airsim.EnvironmentState:
         return self.client.simGetGroundTruthEnvironment(vehicle_name=self.name)
@@ -60,5 +60,5 @@ class UAV():
     def hasCollided(self) -> bool:
         if self.simGetCollisionInfo().time_stamp > self.last_collision_time_stamp:
             self.last_collision_time_stamp = self.simGetCollisionInfo().time_stamp
-            return 1
-        return 0
+            return True
+        return False

@@ -1,5 +1,5 @@
 import os
-from typing import Tuple, TypedDict, Dict, Union
+from typing import Tuple, TypedDict, Dict
 
 import pandas as pd
 import json

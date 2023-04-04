@@ -73,7 +73,7 @@ class GlobalConfig:
 
     # FasterRCNN constants
     num_epochs = 25
-    batch_size = 2
+    batch_size = 4
     num_workers = 0
     sgd_learning_rate = 0.001
     sgd_momentum = 0.9

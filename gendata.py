@@ -1,3 +1,4 @@
+import os
 import random
 import time
 from typing import Optional, Tuple
@@ -13,9 +14,9 @@ from GlobalConfig import GlobalConfig as config
 
 
 def generate_training_data(
-        csv_file: str = "C:/Users/Vasilis/Desktop/CEID/5o_etos/diplomatiki/UAV_Tracking/data/empty_map/empty_map_positions.csv", 
-        root_dir: str = "C:/Users/Vasilis/Desktop/CEID/5o_etos/diplomatiki/UAV_Tracking/data/empty_map/", 
-        num_samples: int = 1
+        csv_file: str,
+        root_dir: str, 
+        num_samples: int = 10
     ) -> None:
 
     """
@@ -54,10 +55,10 @@ def generate_training_data(
     s: int = 0
     while s < num_samples:
         img, offset = create_sample(egoUAV, leadingUAV, init_lead_ego_dist)
-        if torch.is_tensor(img):
+        if img is not None and offset is not None:
             # Save the image and update the csv
             img_filename = str(sample_idx + s).zfill(config.filename_leading_zeros) + ".png"
-            save_image(img, root_dir + img_filename)
+            save_image(img, os.path.join(root_dir, img_filename))
             new_row_df = pd.DataFrame([[img_filename, *offset]], columns=csv_df.columns)
             csv_df = pd.concat([csv_df, new_row_df], ignore_index=True)
             csv_df.to_csv(csv_file, index=False)
@@ -92,7 +93,7 @@ def create_sample(
         egoUAV: EgoUAV, 
         leadingUAV: LeadingUAV, 
         init_lead_ego_dist: airsim.Vector3r,
-    ) -> Tuple[Optional[torch.Tensor], Optional[Tuple]]:
+    ) -> Tuple[Optional[torch.Tensor], Optional[list]]:
     """
     Given the two UAVs and their initial offset
     return a tuple consisting of an image (torch.Tensor), which
@@ -186,13 +187,11 @@ def create_sample(
     global_offset = leadingUAV.simGetObjectPose().position - egoUAV.simGetObjectPose().position
     
     # Return the sample
-    # TODO: fix the types
-    return [img, [*global_offset]] # type: ignore 
+    return (img, [*global_offset])
 
 
 def getLastImageIdx(csv_df: pd.DataFrame) -> int:
     if csv_df.empty:
         return -1
-    # TODO: fix the types
-    return int(csv_df.iloc[-1, 0].split(".")[0]) # type: ignore
-    
+    img_name = str(csv_df.iloc[-1, 0])
+    return int(img_name.split(sep=".")[0])

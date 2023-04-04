@@ -31,11 +31,12 @@ class EgoUAV(UAV):
                 vehicle_name=self.name
             )[0]
         # Convert the string to a 1D numpy array (dtype = uint8)
-        img = np.fromstring(resp.image_data_uint8, dtype=np.uint8)
+        img = np.frombuffer(resp.image_data_uint8, dtype=np.uint8)
         # Reshape it into the proper tensor dimensions
-        img = np.reshape(img, [resp.height, resp.width, 3])
+        img = np.array(np.reshape(img, [resp.height, resp.width, 3]))
         # Convert the numpy array to a pytorch tensor
         if not view_mode:
+            # Convert PIL image to a tensor, since it is not for viewing
             img = T.ToTensor()(img)
         else:
             img = torch.from_numpy(img)

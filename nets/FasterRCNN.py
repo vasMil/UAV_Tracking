@@ -10,9 +10,9 @@ from torch.utils.data import DataLoader
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 from models.BoundingBox import BoundingBoxDataset, BoundBoxDataset_Item
-import matplotlib.patches as patches
 
 from GlobalConfig import GlobalConfig as config
 

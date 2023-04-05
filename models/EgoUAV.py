@@ -8,6 +8,7 @@ from torchvision import transforms as T
 
 from models.UAV import UAV
 from GlobalConfig import GlobalConfig as config
+from models.BoundingBox import BoundingBox
 
 class EgoUAV(UAV):
     def __init__(self, client: airsim.MultirotorClient, name: str) -> None:
@@ -65,3 +66,7 @@ class EgoUAV(UAV):
             self.lastAction = self.moveToPositionAsync(*(position_vec.tolist()))
 
         return self.lastAction
+
+
+    def move_to_bounding_box(self, bbox: BoundingBox):
+        pass

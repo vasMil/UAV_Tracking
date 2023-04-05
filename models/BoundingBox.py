@@ -1,12 +1,12 @@
 import os
-from typing import Tuple, TypedDict, Dict
+from typing import Tuple, TypedDict, Dict, Optional
 
 import pandas as pd
 import json
 import torch
 from torch.utils.data import Dataset
 from torchvision.io import read_image
-from torchvision.transforms import transforms as T, ConvertImageDtype
+from torchvision.transforms import ConvertImageDtype
 
 class BoundingBox():
     """
@@ -16,20 +16,82 @@ class BoundingBox():
     # TODO: Update the code to support multiple BoundingBoxes with different labels for each image.
     """
     def __init__(self,
-                 img_name: str, img_height: int, img_width: int,
-                 label: int, x: float, y: float, height: float, width: float
-        ) -> None:
+                 x1: float, y1: float,
+                 label: int,
+                 x2: Optional[float] = None,
+                 y2: Optional[float] = None,
+                 height: Optional[float] = None,
+                 width: Optional[float] = None,
+                 img_name: Optional[str] = None,
+                 img_height: Optional[int] = None,
+                 img_width: Optional[int] = None
+            ) -> None:
+        """
+        Two types of constructor can be used:
+
+        To invoke type 1, you need to specify:
+        x1, y1: floats that point to the upper left corner of the bounding box
+        height: the height of the bounding box
+        width: the width of the bounding box
+        img_name: the name of the image (you may use this as an id to distinguish between bboxes)
+        img_height: the height of the whole image in pixels
+        img_width: the width of the whole image in pixels
+        label: the label of the object inside the bounding box (0 is reserved for the background)
+
+        To invoke type 2, you need to specify:
+        x1, y1: floats that point to the upper left corner of the bounding box
+        x2, y2: floats that point to the bottom right corner of the bounding box
+        """
+        self.label = label
+        if (height is not None and 
+            width is not None and 
+            img_name is not None and 
+            img_height is not None and 
+            img_width is not None
+        ):
+            self.__full_init(img_name, img_height, img_width,
+                             x1, y1,
+                             height, width
+                        )
+        elif x2 is not None and y2 is not None:
+            self.__fast_init(x1, y1, x2, y2)
+        else:
+            raise Exception("BoundingBox __init__ called with a bad combination of arguments")
+        
+        self.x_center = self.x1 + self.width/2
+        self.y_center = self.y1 + self.height/2
+
+
+    def __full_init(self,
+                    img_name: str, img_height: int, img_width: int,
+                    x: float, y: float, height: float, width: float
+                ) -> None:
+        """
+        "First constructor" used by the BoundingBoxFactory in order to parse the
+        json file and preserve most useful information
+        """
         # Why is scale required: https://labelstud.io/tags/rectanglelabels.html
         self.scale_y = lambda y: y * (img_height / 100)
         self.scale_x = lambda x: x * (img_width / 100)
 
         self.img_name = img_name
-        self.label = label
         self.x1 = self.scale_x(x)
         self.y1 = self.scale_y(y)
         self.x2 = self.scale_x(x + width)
         self.y2 = self.scale_y(y + height)
         self.area = self.scale_y(height) * self.scale_x(width)
+
+    def __fast_init(self, x1: float, y1: float, x2: float, y2: float):
+        """
+        "Second constructor" used to group the data returend by FasterRCNN
+        when in inference
+        """
+        self.x1 = x1
+        self.x2 = x2
+        self.y1 = y1
+        self.y2 = y2
+        self.width = abs(x2 - x1)
+        self.height = abs(y2 - y1)
 
     def __str__(self) -> str:
         return f"BoundingBox: \
@@ -39,6 +101,10 @@ class BoundingBox():
             \n\t img_name = {self.img_name}"
     
     def to_dict(self) -> Dict[str, torch.Tensor]:
+        """
+        A method that will return in dictionary format, the bounding box
+        as required by the FasterRCNN model
+        """
         return {
             "boxes": torch.Tensor([self.x1, self.y1, self.x2, self.y2]),
             "labels": torch.LongTensor([self.label])
@@ -89,8 +155,14 @@ class BoundingBoxFactory():
         """
         return tuple(
                 BoundingBox(
-                    a.img_name, a.original_height, a.original_width, 
-                    self.label_mapper[a.rectanglelabels[0]], a.x, a.y, a.height, a.width
+                    x1=a.x,
+                    y1=a.y,
+                    height=a.height,
+                    width=a.width,
+                    label=self.label_mapper[a.rectanglelabels[0]],
+                    img_name=a.img_name,
+                    img_height=a.original_height,
+                    img_width=a.original_width
                 ) 
                         for a in self.df.itertuples()
             )

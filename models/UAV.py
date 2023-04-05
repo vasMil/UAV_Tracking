@@ -12,6 +12,10 @@ class UAV():
     def __init__(self, client: airsim.MultirotorClient, name: str) -> None:
         self.name = name
         self.client = client
+        # Preserve the origin for the current object's coordinate system in global coordinates
+        # this may later be used in order to find the offset between the coordinate systems
+        # of different UAVs.
+        self.sim_global_coord_frame_origin = client.simGetObjectPose(object_name=name).position
         # Should not allow the UAV to go below a certain height, since it may collide with the ground.
         # In this case we won't allow it to go lower than the position at which it is placed after takeoff.
         self.min_z = client.simGetObjectPose(object_name=self.name).position.z_val

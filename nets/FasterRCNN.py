@@ -12,7 +12,7 @@ from torchvision.models.detection import fasterrcnn_resnet50_fpn
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-from models.BoundingBox import BoundingBoxDataset, BoundBoxDataset_Item
+from models.BoundingBox import BoundingBoxDataset, BoundBoxDataset_Item, BoundingBox
 
 from GlobalConfig import GlobalConfig as config
 
@@ -208,7 +208,25 @@ class FasterRCNN():
         time_elapsed = time.time() - since
         print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
 
+    @torch.no_grad()
+    def eval(self, image: torch.Tensor):
+        # boxes (FloatTensor[N, 4]): the predicted boxes in [x1, y1, x2, y2] format, with 0 <= x1 < x2 <= W and 0 <= y1 < y2 <= H.
+        # labels (Int64Tensor[N]): the predicted labels for each detection
+        # scores (Tensor[N]): the scores of each detection
+        # Move the image to device
+        dev_image = image.to(self.device)
+        # Prepare the model for evaluation
+        self.model.eval()
+        # Handle output returned by inference
+        dict = self.model([dev_image])
+        first_box = dict[0]["boxes"][0]
+        first_label = dict[0]["labels"][0].item()
+        return BoundingBox(x1=first_box[0], y1=first_box[1],
+                           x2=first_box[2], y2=first_box[3],
+                           label=first_label
+                        )
 
+    @torch.no_grad()
     def visualize_evaluation(self, batch_size: int = 1):
         dataset = BoundingBoxDataset(
                     root_dir="data/empty_map/train/", 
@@ -232,7 +250,6 @@ class FasterRCNN():
           pred.append(temp)
         # Display the predicted bounding boxes
         self._show_bounding_boxes_batch(images, pred)
-
 
     def _collate_fn(self, data: list[BoundBoxDataset_Item]) -> Tuple[list[torch.Tensor], list[Dict[str, torch.Tensor]]]:
         """ 

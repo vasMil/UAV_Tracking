@@ -210,21 +210,23 @@ class FasterRCNN():
 
     @torch.no_grad()
     def eval(self, image: torch.Tensor):
-        # boxes (FloatTensor[N, 4]): the predicted boxes in [x1, y1, x2, y2] format, with 0 <= x1 < x2 <= W and 0 <= y1 < y2 <= H.
-        # labels (Int64Tensor[N]): the predicted labels for each detection
-        # scores (Tensor[N]): the scores of each detection
         # Move the image to device
         dev_image = image.to(self.device)
         # Prepare the model for evaluation
         self.model.eval()
         # Handle output returned by inference
         dict = self.model([dev_image])
-        first_box = dict[0]["boxes"][0]
-        first_label = dict[0]["labels"][0].item()
-        return BoundingBox(x1=first_box[0], y1=first_box[1],
+        first_box = dict[0]["boxes"][0].to("cpu").tolist()
+        first_label = dict[0]["labels"][0].to("cpu").item()
+        
+        bbox = BoundingBox(x1=first_box[0], y1=first_box[1],
                            x2=first_box[2], y2=first_box[3],
                            label=first_label
                         )
+        # bbox_dict = bbox.to_dict()
+        # bbox_dict["boxes"] = bbox_dict["boxes"].unsqueeze(0).unsqueeze(0)
+        # self._show_bounding_boxes_batch(image.unsqueeze(0), [bbox_dict])
+        return bbox
 
     @torch.no_grad()
     def visualize_evaluation(self, batch_size: int = 1):

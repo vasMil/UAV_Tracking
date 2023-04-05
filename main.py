@@ -40,30 +40,37 @@ egoUAV = EgoUAV(client, "EgoUAV")
 egoUAV.lastAction.join()
 leadingUAV.lastAction.join() # Just to make sure
 
-# Move the leadingUAV to a random position - within egoUAV's FOV
-leadingUAV.sim_move_within_FOV(egoUAV, True)
-
-# Pause the simulation
-client.simPause(True)
-
-# Take an image and use the trained model to predict the bounding box
-img = egoUAV._getImage()
+# Initialize the NN
 rcnn = FasterRCNN("data/empty_map/train/", "data/empty_map/train/empty_map.json",
                   "data/empty_map/test/", "data/empty_map/test/empty_map.json")
 rcnn.load("nets/trained/faster_rcnn_state_dict_epoch50")
-bbox = rcnn.eval(img)
 
-# Calculate the distances on each axis, using the focal length
-x_offset = 46 * 3.5 / bbox.width
-print(x_offset)
+for i in range(10):
+    print(f"\n\nIteration: {i}")
+    print("--------------")
+    # Move the leadingUAV to a random position - within egoUAV's FOV
+    # leadingUAV.sim_move_within_FOV(egoUAV, True).join()
+    leadingUAV.random_move()
+    # leadingUAV.lastAction.join()
+    time.sleep(config.sleep_const)
 
-# Continue the simulation
-client.simPause(False)
+    # Pause the simulation
+    # client.simPause(True)
 
-# Move the egoUAV to that position and hope the two UAVs collide
+    # Take an image and use the trained model to predict the bounding box
+    img = egoUAV._getImage()
+    bbox = rcnn.eval(img)
 
+    # Continue the simulation
+    # client.simPause(False)
+
+    # Move the egoUAV toward the predicted BoundingBox and hope the two UAVs collide
+    egoUAV.moveToBoundingBoxAsync(bbox)
+    # egoUAV.lastAction.join()
+    time.sleep(2)
 
 # TODO: Wait for the lastActions to finish?
+time.sleep(20)
 # Reset the location of all Multirotors
 client.reset()
 # Do not forget to disable all Multirotors

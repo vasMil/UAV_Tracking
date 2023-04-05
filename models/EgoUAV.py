@@ -1,3 +1,4 @@
+import math
 from typing import Optional
 
 import airsim
@@ -68,5 +69,45 @@ class EgoUAV(UAV):
         return self.lastAction
 
 
-    def move_to_bounding_box(self, bbox: BoundingBox):
-        pass
+    def moveToBoundingBoxAsync(self, bbox: BoundingBox) -> Future:
+        """
+        Given a BoundingBox object, calculate its relative distance
+        (offset) on the x axis, using the focal length.
+        Then using some trigonomerty determine the offset on the
+        y and z axis.
+        Lastly, add to your current coordinates this calculated offset
+        and move towards that object, using moveToPositionAsync().
+        """
+        offset = airsim.Vector3r()
+        # Calculate the distance (x axis) of the two UAV's, using the
+        # camera's focal length
+        offset.x_val = config.focal_length_const / bbox.width
+
+        # Since the Horizontal FOV is 90deg we may calculate the distance
+        # on the y axis that the camera captures.
+        img_width_meters = 2 * offset.x_val
+        y_box_displacement = bbox.x_center - config.img_width/2
+        offset.y_val = (y_box_displacement * img_width_meters) / config.img_width
+
+        # Using the same logic we can calculate the distance on the z axis.
+        # We should also take into account that the aspect ratio changes the
+        # FOV.
+        img_height_meters = 2 * offset.x_val * math.tan(config.vert_fov)
+        z_box_displacement = bbox.y_center - config.img_height/2
+        offset.z_val = (z_box_displacement * img_height_meters) / config.img_height
+        # print("first approach: ", offset.z_val)
+        # offset.z_val = z_box_displacement * (config.pawn_size_z / bbox.height)
+        # print("second approach: ", offset.z_val)
+
+        # Now that you used trigonometry to get the distance on the y and z axis
+        # you should fix the offset on the x axis, since the current one is the
+        # distance between the camera and the back side of the leadingUAV, but
+        # you need to calculate the distance between the centers of the two UAVs.
+        offset.x_val += config.pawn_size_x
+        
+        # Calculate the new position on EgoUAV's coordinate system to move at.
+        new_pos = self.getMultirotorState().kinematics_estimated.position + offset
+        print(f"Current estimated pos: {self.getMultirotorState().kinematics_estimated.position}")
+        print(f"Predicted offset: {offset}")
+        self.lastAction = self.moveToPositionAsync(*new_pos)
+        return self.lastAction

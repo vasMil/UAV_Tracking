@@ -39,15 +39,32 @@ class GlobalConfig:
     # Minimum acceptable error
     eps = 1e-8
 
-    # Camera setting, change this if you change the defaults in setting.json (or vice versa)
-    img_height = 256
-    img_width = 144
-    aspect_ratio = img_height / img_width # (=16:9)
-
     # Pawn size
     pawn_size_x = 0.98
     pawn_size_y = 0.98
     pawn_size_z = 0.29
+
+    # Camera settings, change this if you change the defaults in setting.json (or vice versa)
+    img_height = 144
+    img_width = 256
+    aspect_ratio = img_width / img_height  # (=16:9)
+    horiz_fov = 90
+    # How to calculate the vertical FOV:
+    # https://github.com/microsoft/AirSim/issues/902
+    vert_fov = (img_height / img_width) * 90
+    # The focal length of our camera has already been calculated as
+    # F = (P * D) / W, where 
+    # P is the width of the object in pixels,
+    # D is the actual distance of the camera, from that object,
+    # W is the width of the object in meters
+    # We placed the two UAVs the one infront of the other, with 3.5
+    # meters between their centers. Thus the actual distance between the
+    # camera and the back of the leadingUAV is 3.5 - 2*(pawn_size_x/2).
+    # Since we will only use this constant in order to recover D 
+    # (distance in meters) of the same object, we will not divide with W,
+    # since this will introduce arithmetic errors that can be avoided.
+    # (The Ws cancel out eachother).
+    focal_length_const = 46 * (3.5 - pawn_size_x)
 
     # Data generation
     # Seconds to wait for the UAVs to stop moving before capturing the image

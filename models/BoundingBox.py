@@ -96,9 +96,7 @@ class BoundingBox():
     def __str__(self) -> str:
         return f"BoundingBox: \
             \n\t x1 = {self.x1}, y1 = {self.y1} | top left pixel \
-            \n\t x2 = {self.x2}, y2 = {self.y2} | bottom right pixel \
-            \n\t area = {self.area} \
-            \n\t img_name = {self.img_name}"
+            \n\t x2 = {self.x2}, y2 = {self.y2} | bottom right pixel"
     
     def to_dict(self) -> Dict[str, torch.Tensor]:
         """

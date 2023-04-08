@@ -31,7 +31,6 @@ def view_video_feed(egoUAV: EgoUAV, leadingUAV: LeadingUAV):
 # Create a client to communicate with the UE
 client = airsim.MultirotorClient()
 client.confirmConnection()
-# client.simRunConsoleCommand("stat fps")
 print(f"Vehicle List: {client.listVehicles()}\n")
 
 # Create the vehicles and perform the takeoff
@@ -48,11 +47,8 @@ rcnn.load("nets/trained/faster_rcnn_state_dict_epoch50")
 for i in range(10):
     print(f"\n\nIteration: {i}")
     print("--------------")
-    # Move the leadingUAV to a random position - within egoUAV's FOV
-    # leadingUAV.sim_move_within_FOV(egoUAV, True).join()
+    # Move the leadingUAV to a random position
     leadingUAV.random_move()
-    # leadingUAV.lastAction.join()
-    time.sleep(config.sleep_const)
 
     # Pause the simulation
     # client.simPause(True)
@@ -67,10 +63,9 @@ for i in range(10):
     # Move the egoUAV toward the predicted BoundingBox and hope the two UAVs collide
     egoUAV.moveToBoundingBoxAsync(bbox)
     # egoUAV.lastAction.join()
-    time.sleep(2)
+    time.sleep(1)
 
 # TODO: Wait for the lastActions to finish?
-time.sleep(20)
 # Reset the location of all Multirotors
 client.reset()
 # Do not forget to disable all Multirotors

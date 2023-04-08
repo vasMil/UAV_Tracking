@@ -1,3 +1,4 @@
+import math
 from typing import Optional
 
 class GlobalConfig:
@@ -48,23 +49,23 @@ class GlobalConfig:
     img_height = 144
     img_width = 256
     aspect_ratio = img_width / img_height  # (=16:9)
-    horiz_fov = 90
+
+    # Found by using simGetCameraInfo()
+    horiz_fov = math.radians(89.90362548828125)
     # How to calculate the vertical FOV:
     # https://github.com/microsoft/AirSim/issues/902
-    vert_fov = (img_height / img_width) * 90
+    vert_fov = math.radians((img_height / img_width) * 89.90362548828125)
+    camera_offset_x = 0.4599999785423279
     # The focal length of our camera has already been calculated as
-    # F = (P * D) / W, where 
+    # F = (P * D) / W, where
     # P is the width of the object in pixels,
     # D is the actual distance of the camera, from that object,
     # W is the width of the object in meters
     # We placed the two UAVs the one infront of the other, with 3.5
     # meters between their centers. Thus the actual distance between the
-    # camera and the back of the leadingUAV is 3.5 - 2*(pawn_size_x/2).
-    # Since we will only use this constant in order to recover D 
-    # (distance in meters) of the same object, we will not divide with W,
-    # since this will introduce arithmetic errors that can be avoided.
-    # (The Ws cancel out eachother).
-    focal_length_const = 46 * (3.5 - pawn_size_x)
+    # camera and the back of the leadingUAV is 3.5 - camera_offset_x - pawn_size_x/2.
+    focal_length_x = 46 * (3.5 - camera_offset_x - pawn_size_x/2) / pawn_size_y
+    focal_length_y = 13 * (3.5 - camera_offset_x - pawn_size_x/2) / pawn_size_z
 
     # Data generation
     # Seconds to wait for the UAVs to stop moving before capturing the image

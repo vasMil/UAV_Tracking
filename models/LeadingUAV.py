@@ -63,7 +63,7 @@ class LeadingUAV(UAV):
         print(f"{self.name} moveByVelocityAsync: vx = {vx}, vy = {vy}, vz = {vz}")
         return (self.lastAction, velocity_vec)
     
-    def sim_move_within_FOV(self, uav: UAV, print_offset: bool = False) -> Future:
+    def sim_move_within_FOV(self, uav: UAV, print_offset: bool = False) -> Tuple[Future, airsim.Vector3r]:
         """
         Move the leadingUAV at a random position, that is within the bounds
         of uav's Field Of View (FOV).
@@ -123,9 +123,13 @@ class LeadingUAV(UAV):
             lead_local_pos.z_val = self.min_z
             offset.z_val = self.min_z - uav.simGetGroundTruthKinematics().position.z_val
 
+        # offset = airsim.Vector3r(14.524488722836576, -3.9391929802995307, -6.169142644866273)
+        # lead_ego_dist_coord_frame_offset = self.sim_global_coord_frame_origin - uav.sim_global_coord_frame_origin
+        # lead_local_pos = uav.simGetGroundTruthKinematics().position + offset - lead_ego_dist_coord_frame_offset
+
         if print_offset:
             print(f"Target offset: (x={offset.x_val}, y={offset.y_val}, z={offset.z_val})")
 
         # Move the leadingUAV to those global coordinates
         self.lastAction = self.moveToPositionAsync(*lead_local_pos)
-        return self.lastAction
+        return self.lastAction, offset

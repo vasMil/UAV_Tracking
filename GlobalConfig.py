@@ -3,11 +3,13 @@ from typing import Optional
 
 class GlobalConfig:
     """ Contains all the configuration options used in this project """
+    # The port number airsim if configured to listen to
+    port = 41451
     # The seed used for the LeadingUAV random movements
     leadingUAV_seed: Optional[int] = 1
 
     # The magnitude of the velocity vector (in 3D space)
-    leading_velocity: float = 4.
+    leading_velocity: float = 2.
 
     # The upper an lower limit for the velocity on each axis of both UAVs
     max_vx, max_vy, max_vz = 4.,  1.,  0.2
@@ -38,7 +40,7 @@ class GlobalConfig:
     game_loop_steps: int = 10
 
     # Minimum acceptable error
-    eps = 1e-8
+    eps = 1e-5
 
     # Pawn size
     pawn_size_x = 0.98

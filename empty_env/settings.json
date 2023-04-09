@@ -22,5 +22,14 @@
 			"X": 3.5, "Y": 0, "Z": 0
 		}
 	},
-	"ApiServerPort": 41451
+	"ApiServerPort": 41451,
+	"Recording": {
+		"RecordOnMove": false,
+		"RecordInterval": 0.05,
+		"Folder": "",
+		"Enabled": false,
+		"Cameras": [
+			{ "CameraName": "0", "ImageType": 0, "PixelsAsFloat": false,  "VehicleName": "EgoUAV", "Compress": true }
+		]
+	  }
 }

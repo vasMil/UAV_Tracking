@@ -47,7 +47,7 @@ class FasterRCNN():
         # 2. Your model does not change (i.e. does not have layers that are only
         #    "activated" when certain conditions are met)
         # (source: https://stackoverflow.com/questions/58961768/set-torch-backends-cudnn-benchmark-true-or-not)
-        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.benchmark = False
 
         # Define the model
         # It is important to move it to the GPU, before initializing the

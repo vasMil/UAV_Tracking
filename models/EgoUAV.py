@@ -10,13 +10,15 @@ from torchvision import transforms as T
 from models.UAV import UAV
 from GlobalConfig import GlobalConfig as config
 from models.BoundingBox import BoundingBox
+from nets.FasterRCNN import FasterRCNN
 
 class EgoUAV(UAV):
-    def __init__(self, client: airsim.MultirotorClient, name: str) -> None:
-        # print(f"Vehicle position EgoUAV frame: {client.simGetGroundTruthKinematics(vehicle_name=name).position}")
-        # print(f"Vehicle position Global frame: {client.simGetObjectPose(object_name=name).position}")
-        # print(f"Camera Info: {client.simGetCameraInfo(camera_name='front_center', vehicle_name='EgoUAV')}")
-        super().__init__(client, name)
+    def __init__(self, name: str, port: int = 41451) -> None:
+        super().__init__(name, port)
+        # Initialize the NN
+        self.rcnn = FasterRCNN("data/empty_map/train/", "data/empty_map/train/empty_map.json",
+                              "data/empty_map/test/", "data/empty_map/test/empty_map.json")
+        self.rcnn.load("nets/trained/faster_rcnn_state_dict_epoch50")
 
 
     def _getImage(self, view_mode: bool = False) -> torch.Tensor:

@@ -16,12 +16,12 @@ class LeadingUAV(UAV):
     obstacles in the AirSim map.
     """
     def __init__(
-            self, 
-            client: airsim.MultirotorClient, 
-            name: str, 
+            self,
+            name: str,
+            port: int = 41451,
             seed: Optional[int] = None
         ) -> None:
-        super().__init__(client, name)
+        super().__init__(name, port)
         # Configure random state
         self._randomState = RandomState(seed)
 

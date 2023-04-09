@@ -1,73 +1,74 @@
 import time
+import multiprocessing as mp
 
 import airsim
-import torch
-from torchvision.utils import save_image
 
 from GlobalConfig import GlobalConfig as config
 from models.LeadingUAV import LeadingUAV
 from models.EgoUAV import EgoUAV
-from nets.FasterRCNN import FasterRCNN
 
 # Make sure move_duration exceeds sleep_duration
 # otherwise in each iteration of the game loop the
 # leading vehicle will "run out of moves" before the next iteration
 assert(config.move_duration > config.sleep_const)
 
-def view_video_feed(egoUAV: EgoUAV, leadingUAV: LeadingUAV):
-    import matplotlib.pyplot as plt
-    plt.ion()
-    for _ in range(0, config.game_loop_steps):
+def leadingUAV_loop(exit_signal, port: int, time_interval: int):
+    leadingUAV = LeadingUAV("LeadingUAV", port, config.leadingUAV_seed)
+    leadingUAV.lastAction.join()
+    with exit_signal.get_lock():
+        exit_status = exit_signal.value # type: ignore
+    # time.sleep(60)
+    while not exit_status:
         leadingUAV.random_move()
-        # egoUAV._cheat_move(velocity_vec=velocity_vec)
-        egoUAV._cheat_move(position_vec=torch.tensor([*(leadingUAV.simGetObjectPose().position)]))
-        t_stop = time.time() + config.sleep_const
-        while time.time() < t_stop:
-            plt.imshow(egoUAV._getImage(view_mode=True))
-            plt.show()
-            plt.pause(0.2)
-    plt.ioff()
+        time.sleep(time_interval)
+        with exit_signal.get_lock():
+            exit_status = exit_signal.value # type: ignore
+    leadingUAV.disable()
 
-# Create a client to communicate with the UE
-client = airsim.MultirotorClient()
-client.confirmConnection()
-print(f"Vehicle List: {client.listVehicles()}\n")
+def egoUAV_loop(exit_signal, port: int):
+    """
+    Follows the leadingUAV, using it's NN, by predicting the bounding box
+    and then moving towards it.
+    """
+    egoUAV = EgoUAV("EgoUAV", port)
+    egoUAV.lastAction.join()
+    with exit_signal.get_lock():
+        exit_status = exit_signal.value # type: ignore
+        
+    while not exit_status:
+        img = egoUAV._getImage()
+        bbox = egoUAV.rcnn.eval(img)
+        egoUAV.moveToBoundingBoxAsync(bbox)
+        print("Ready to move")
+        with exit_signal.get_lock():
+            exit_status = exit_signal.value # type: ignore
+    egoUAV.disable()
 
-# Create the vehicles and perform the takeoff
-leadingUAV = LeadingUAV(client, "LeadingUAV", config.leadingUAV_seed)
-egoUAV = EgoUAV(client, "EgoUAV")
-egoUAV.lastAction.join()
-leadingUAV.lastAction.join() # Just to make sure
+if __name__ == '__main__':
+    # Create a client to communicate with the UE
+    client = airsim.MultirotorClient()
+    client.confirmConnection()
+    print(f"Vehicle List: {client.listVehicles()}\n")
+    # Start recording
+    client.startRecording()
 
-# Initialize the NN
-rcnn = FasterRCNN("data/empty_map/train/", "data/empty_map/train/empty_map.json",
-                  "data/empty_map/test/", "data/empty_map/test/empty_map.json")
-rcnn.load("nets/trained/faster_rcnn_state_dict_epoch50")
+    # Communication variables
+    exit_signal = mp.Value('i', False)
 
-for i in range(10):
-    print(f"\n\nIteration: {i}")
-    print("--------------")
-    # Move the leadingUAV to a random position
-    leadingUAV.random_move()
+    # Create two processes
+    leadingUAV_process = mp.Process(target=leadingUAV_loop, args=(exit_signal, config.port, 2))
+    egoUAV_process = mp.Process(target=egoUAV_loop, args=(exit_signal, config.port))
+    leadingUAV_process.start()
+    egoUAV_process.start()
 
-    # Pause the simulation
-    # client.simPause(True)
+    time.sleep(60)
+    with exit_signal.get_lock():
+        exit_signal.value = True # type: ignore
+    
+    leadingUAV_process.join()
+    egoUAV_process.join()
 
-    # Take an image and use the trained model to predict the bounding box
-    img = egoUAV._getImage()
-    bbox = rcnn.eval(img)
+    # Stop recording
+    client.stopRecording()
 
-    # Continue the simulation
-    # client.simPause(False)
-
-    # Move the egoUAV toward the predicted BoundingBox and hope the two UAVs collide
-    egoUAV.moveToBoundingBoxAsync(bbox)
-    # egoUAV.lastAction.join()
-    time.sleep(1)
-
-# TODO: Wait for the lastActions to finish?
-# Reset the location of all Multirotors
-client.reset()
-# Do not forget to disable all Multirotors
-leadingUAV.disable()
-egoUAV.disable()
+    client.reset()

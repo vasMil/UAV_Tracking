@@ -1,6 +1,6 @@
 import math
 import time
-from typing import Dict, Tuple
+from typing import Dict, Tuple, TypedDict, Mapping, Any
 import copy
 
 import torch
@@ -16,17 +16,31 @@ from models.BoundingBox import BoundingBoxDataset, BoundBoxDataset_Item, Boundin
 
 from GlobalConfig import GlobalConfig as config
 
+class Checkpoint_t(TypedDict):
+    model_state_dict: Mapping[str, Any]
+    epoch: int
+    loss: float
+    optimizer_state_dict: dict[Any, Any]
+    scheduler_state_dict: dict[Any, Any]
+    training_time: float
+
 
 class FasterRCNN():
     def __init__(
           self, 
-          root_train_dir: str, json_train_labels: str,
-          root_test_dir: str, json_test_labels: str
+          root_train_dir: str = "", json_train_labels: str = "",
+          root_test_dir: str = "", json_test_labels: str = ""
         ) -> None:
         """
         Class that trains and tests fasterrcnn_resnet50_fpn on custom data.
         """
-        super().__init__()
+        # Determine if the required paths for training have been specified
+        self.can_train = True if root_train_dir and \
+                                 json_train_labels and \
+                                 root_test_dir and \
+                                 json_test_labels \
+                              else False
+        
         self.root_dirs = {
             "train": root_train_dir, 
             "val": root_test_dir
@@ -54,7 +68,9 @@ class FasterRCNN():
         # optimizer:
         # https://stackoverflow.com/questions/66091226/runtimeerror-expected-all-tensors-to-be-on-the-same-device-but-found-at-least/66096687#66096687
         self.model = fasterrcnn_resnet50_fpn(weights=None, num_classes=2).to(self.device)
-
+        self.epoch: int = 0
+        self.loss: float = math.inf
+        self.training_time: float = 0.
         # Found out the line of code -after the comments- here:
         # https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html
         # Did some research and found the link below that may help you
@@ -94,11 +110,26 @@ class FasterRCNN():
             )
 
 
-    def load(self, path: str) -> None:
-        self.model.load_state_dict(torch.load(path))
+    def load(self, checkpoint_path: str) -> None:
+        checkpoint: Checkpoint_t = torch.load(checkpoint_path)
+        self.model.load_state_dict(checkpoint["model_state_dict"])
+        self.epoch = checkpoint["epoch"]
+        self.loss = checkpoint["loss"]
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        self.training_time = checkpoint["training_time"]
 
-    def save(self, path: str) -> None:
-        torch.save(self.model.state_dict(), path)
+    def save(self, checkpoint_path: str) -> None:
+        checkpoint: Checkpoint_t = {
+            "model_state_dict": self.model.state_dict(),
+            "epoch":self.epoch,
+            "loss":self.loss,
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "scheduler_state_dict": self.scheduler.state_dict(),
+            "training_time":self.training_time
+        }
+        torch.save(checkpoint, checkpoint_path)
+
 
     def train(self, num_epochs: int = config.num_epochs) -> None:
         """
@@ -106,6 +137,11 @@ class FasterRCNN():
         Implementation is based on: 
         https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html
         """
+        # Throw an error if one attempts to train the network without having
+        # specified the required paths
+        if not self.can_train:
+            raise Exception("Paths required for training have not been specified")
+        
         # Get the current time (in seconds) at which the training starts
         since = time.time()
 
@@ -129,13 +165,13 @@ class FasterRCNN():
         # gradient calculation (autograd) will be disabled.
         self.model.train()
 
-        min_loss = math.inf
+        min_loss = self.loss
         best_model_wts = copy.deepcopy(self.model.state_dict())
 
         # Train for num_epochs
         if config.profile: self.prof.start()
-        for epoch in range(num_epochs):
-            print(f'\n\nEpoch {epoch}/{num_epochs - 1}')
+        for epoch in range(self.epoch, self.epoch + num_epochs):
+            print(f'\n\nEpoch {epoch}/{self.epoch + num_epochs - 1}')
             print('-' * 10)
             
             # Each epoch has a training phase and a validation phase
@@ -157,7 +193,7 @@ class FasterRCNN():
                 running_loss = 0.0
 
                 # Iterate over data in batches
-                for batch_idx, (images, targets) in enumerate(dataloaders[phase]):
+                for images, targets in dataloaders[phase]:
                     # Move data to device
                     # Chose not to implement this copy in the collate function,
                     # because when I did, an error occurred when trying to use
@@ -204,9 +240,12 @@ class FasterRCNN():
                     best_model_wts = copy.deepcopy(self.model.state_dict())
         
         if config.profile: self.prof.stop()
-
         time_elapsed = time.time() - since
+        self.epoch = self.epoch + num_epochs
+        self.loss = min_loss
+        self.training_time += time_elapsed
         print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
+        print(f'Total training time {self.training_time // 60:.0f}m {time_elapsed % 60:.0f}s')
 
     @torch.no_grad()
     def eval(self, image: torch.Tensor):

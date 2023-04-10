@@ -1,6 +1,6 @@
 import math
 import time
-from typing import Dict, Tuple, TypedDict, Mapping, Any
+from typing import Dict, Tuple, TypedDict, Mapping, Any, Optional
 import copy
 
 import torch
@@ -248,13 +248,15 @@ class FasterRCNN():
         print(f'Total training time {self.training_time // 60:.0f}m {time_elapsed % 60:.0f}s')
 
     @torch.no_grad()
-    def eval(self, image: torch.Tensor):
+    def eval(self, image: torch.Tensor) -> Optional[BoundingBox]:
         # Move the image to device
         dev_image = image.to(self.device)
         # Prepare the model for evaluation
         self.model.eval()
         # Handle output returned by inference
         dict = self.model([dev_image])
+        if len(dict[0]["boxes"]) == 0:
+            return None
         first_box = dict[0]["boxes"][0].to("cpu").tolist()
         first_label = dict[0]["labels"][0].to("cpu").item()
         

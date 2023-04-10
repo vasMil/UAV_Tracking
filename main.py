@@ -38,8 +38,8 @@ def egoUAV_loop(exit_signal, port: int):
     while not exit_status:
         img = egoUAV._getImage()
         bbox = egoUAV.rcnn.eval(img)
-        egoUAV.moveToBoundingBoxAsync(bbox)
-        print("Ready to move")
+        future = egoUAV.moveToBoundingBoxAsync(bbox)
+        print("UAV detected, moving towards it..." if future else "Lost tracking!!!")
         with exit_signal.get_lock():
             exit_status = exit_signal.value # type: ignore
     egoUAV.disable()
@@ -50,6 +50,9 @@ if __name__ == '__main__':
     client.confirmConnection()
     print(f"Vehicle List: {client.listVehicles()}\n")
     # Start recording
+    print("\n*****************")
+    print("Recording Started")
+    print("*****************\n")
     client.startRecording()
 
     # Communication variables
@@ -61,7 +64,7 @@ if __name__ == '__main__':
     leadingUAV_process.start()
     egoUAV_process.start()
 
-    time.sleep(60)
+    time.sleep(120)
     with exit_signal.get_lock():
         exit_signal.value = True # type: ignore
     
@@ -70,5 +73,8 @@ if __name__ == '__main__':
 
     # Stop recording
     client.stopRecording()
+    print("\n*****************")
+    print("Recording Stopped")
+    print("*****************\n")
 
     client.reset()

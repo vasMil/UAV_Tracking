@@ -16,9 +16,8 @@ class EgoUAV(UAV):
     def __init__(self, name: str, port: int = 41451) -> None:
         super().__init__(name, port)
         # Initialize the NN
-        self.rcnn = FasterRCNN("data/empty_map/train/", "data/empty_map/train/empty_map.json",
-                              "data/empty_map/test/", "data/empty_map/test/empty_map.json")
-        self.rcnn.load("nets/trained/faster_rcnn_state_dict_epoch50")
+        self.rcnn = FasterRCNN()
+        self.rcnn.model.load_state_dict(torch.load("nets/trained/faster_rcnn_state_dict_epoch50"))
 
 
     def _getImage(self, view_mode: bool = False) -> torch.Tensor:
@@ -194,7 +193,7 @@ class EgoUAV(UAV):
         raise ValueError("_get_z_distance: Invalid mode!")
     
 
-    def moveToBoundingBoxAsync(self, bbox: BoundingBox) -> Future:
+    def moveToBoundingBoxAsync(self, bbox: Optional[BoundingBox]) -> Optional[Future]:
         """
         Given a BoundingBox object, calculate its relative distance
         (offset) on the x axis, using the focal length.
@@ -203,6 +202,8 @@ class EgoUAV(UAV):
         Lastly, add to your current coordinates this calculated offset
         and move towards that object, using moveToPositionAsync().
         """
+        if not bbox:
+            return None
         offset = airsim.Vector3r()
         # Calculate the distance (x axis) of the two UAV's, using the
         # camera's focal length

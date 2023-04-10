@@ -79,7 +79,9 @@ class BoundingBox():
         self.y1 = self.scale_y(y)
         self.x2 = self.scale_x(x + width)
         self.y2 = self.scale_y(y + height)
-        self.area = self.scale_y(height) * self.scale_x(width)
+        self.width = self.scale_x(width)
+        self.height = self.scale_y(height)
+        self.area = self.height * self.width
 
     def __fast_init(self, x1: float, y1: float, x2: float, y2: float):
         """

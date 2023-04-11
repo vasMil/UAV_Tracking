@@ -2,12 +2,13 @@ import math
 import time
 from typing import Dict, Tuple, TypedDict, Mapping, Any, Optional
 import copy
+import warnings
 
 import torch
+from torch import nn
 import torch.backends.cudnn
 from torch import optim
 from torch.utils.data import DataLoader
-from torchvision.models.detection import fasterrcnn_resnet50_fpn
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -16,43 +17,89 @@ from models.BoundingBox import BoundingBoxDataset, BoundBoxDataset_Item, Boundin
 
 from GlobalConfig import GlobalConfig as config
 
+
 class Checkpoint_t(TypedDict):
     model_state_dict: Mapping[str, Any]
     epoch: int
     loss: float
     optimizer_state_dict: dict[Any, Any]
-    scheduler_state_dict: dict[Any, Any]
+    scheduler_state_dict: Optional[dict[Any, Any]]
     training_time: float
 
 
-class FasterRCNN():
-    def __init__(
-          self, 
-          root_train_dir: str = "", json_train_labels: str = "",
-          root_test_dir: str = "", json_test_labels: str = ""
-        ) -> None:
-        """
-        Class that trains and tests fasterrcnn_resnet50_fpn on custom data.
-        """
-        # Determine if the required paths for training have been specified
-        self.can_train = True if root_train_dir and \
-                                 json_train_labels and \
-                                 root_test_dir and \
-                                 json_test_labels \
-                              else False
+class DetectionNetBench():
+    """
+    This class may host a Neural Network for detection. In order to achieve this
+    a class may extend this and assign (or update) the default values for
+    model, optimizer, scheduler, profiler.
+    Its purpose is to wrap the NN so it is easier for higher level modules
+    to use it.
+
+    This is possible because, the two NN we currently use (FasterRCNN, SSD)
+    both have a common interface as to how the input must be provided, 
+    when in training or evaluation mode, as well as how the loss functions
+    are returned.
+    We exploit this common interface to:
+        1. Handle moving the data to a device, if available.
+        2. Create a training function that will also evaluate a test set
+           before proceeding to the next epoch and preserving the new weights.
+        3. Create a custom collate function for data in batches, since the
+           default one does not provide the correct format.
+        4. Extract a single bounding box out of the prediction returned by the
+           network.
+        5. Implement a checkpoint dictionary that can be saved and loaded,
+           given only the path.
+        6. Provide a visualization function for the evaluation.
         
+    """
+    def __init__(self,
+                 model: nn.Module,
+                 model_id: str,
+                 root_train_dir: str = "", json_train_labels: str = "",
+                 root_test_dir: str = "", json_test_labels: str = ""
+            ) -> None:
+        """
+        Initializes the DetectionNetBench.
+        - If used for training, you need to provide all the arguments.
+        - If only used for evaluation (via the eval() method), you may
+        ignore all parameters, but you need to load a checkpoint. This
+        checkpoint can be saved using the save() method, after training.
+        - I you just want to visualize a test image, need only to specify
+        the test arguments (i.e. root_test_dir and json_test_labels).
+
+        Args:
+        - model: The detection model you want to wrap.
+        - model_id: A string to use when profiling
+        - root_train_dir: The root directory, where all training image
+                          files are located.
+        - json_train_labels: Path to the json file exported using
+                             label studio (the tool we used to label
+                             our data) for the training images.
+        - root_test_dir: The root directory, where all testing image
+                          files are located.
+        - json_test_labels: Path to the json file exported using
+                             label studio (the tool we used to label
+                             our data) for the testing images.
+        """
+        # Decide what methods can be executed based on the
+        # arguments provided
+        if (root_train_dir and json_train_labels and
+            root_test_dir and json_test_labels
+        ):
+            self.can_train = True
+        if root_test_dir and json_test_labels:
+            self.can_visualize = True
+
+        # Organize the arguments into dictionaries
         self.root_dirs = {
             "train": root_train_dir, 
             "val": root_test_dir
-            }
+        }
         self.json_labels = {
             "train": json_train_labels, 
             "val": json_test_labels
-            }
-        # Determine the default device for the network to train and run on
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print("FasterRCNN initialized in " + str(self.device))
-
+        }
+        
         # NVIDIAs performance tuning guide:
         # https://tigress-web.princeton.edu/~jdh4/PyTorchPerformanceTuningGuide_GTC2021.pdf
         # When to set torch.backends.cudnn.benchmark:
@@ -62,15 +109,19 @@ class FasterRCNN():
         #    "activated" when certain conditions are met)
         # (source: https://stackoverflow.com/questions/58961768/set-torch-backends-cudnn-benchmark-true-or-not)
         torch.backends.cudnn.benchmark = False
+        
+        # Determine the default device for the network to train and run on
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"{model_id} initialized in {str(self.device)}")
 
-        # Define the model
-        # It is important to move it to the GPU, before initializing the
-        # optimizer:
-        # https://stackoverflow.com/questions/66091226/runtimeerror-expected-all-tensors-to-be-on-the-same-device-but-found-at-least/66096687#66096687
-        self.model = fasterrcnn_resnet50_fpn(weights=None, num_classes=2).to(self.device)
+        # Model
+        self.model = model.to(self.device)
+
+        # Checkpoint info
         self.epoch: int = 0
         self.loss: float = math.inf
         self.training_time: float = 0.
+
         # Found out the line of code -after the comments- here:
         # https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html
         # Did some research and found the link below that may help you
@@ -83,53 +134,139 @@ class FasterRCNN():
         # momentum in optim.SGD. More:
         # https://discuss.pytorch.org/t/update-only-sub-elements-of-weights/29101
         params = [p for p in self.model.parameters() if p.requires_grad]
-        # Momentum and weight_decay constants were found at the Faster RCNN paper.
+        # Momentum and weight_decay constants were found at
+        # the Faster RCNN paper and the SSD paper.
         self.optimizer = optim.SGD(params, 
                                    lr=config.sgd_learning_rate,
                                    momentum=config.sgd_momentum, 
                                    weight_decay=config.sgd_weight_decay
                                 )
-
-        self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer,
-                                                        milestones=config.scheduler_milestones,
-                                                        gamma=config.scheduler_gamma
-                                                    )
-        
-        if config.profile:
-            self.prof = torch.profiler.profile(
+        self.scheduler = optim.lr_scheduler.MultiStepLR(
+                            self.optimizer,
+                            milestones=config.scheduler_milestones,
+                            gamma=config.scheduler_gamma
+                        )
+        self.prof = torch.profiler.profile(
                 activities=[torch.profiler.ProfilerActivity.CPU,
                             torch.profiler.ProfilerActivity.CUDA],
                 schedule=torch.profiler.schedule(wait=config.prof_wait,
                                                  warmup=config.prof_warmup,
                                                  active=config.prof_active, 
                                                  repeat=config.prof_repeat),
-                on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/fasterrcnn'),
+                on_trace_ready=torch.profiler.
+                                tensorboard_trace_handler('./log/' + model_id),
                 record_shapes=True,
                 with_stack=True,
                 profile_memory=True
             )
-
-
+        
     def load(self, checkpoint_path: str) -> None:
+        """
+        Given a checkpoint_path, loads the checkpoint dictionary
+        to the DetectionNetBench attributes.
+        Since the scheduler is optional, if the provided checkpoint
+        does preserve the state dictionary of a scheduler, but the
+        self.scheduler is None, an Attribute error will be raised.
+        If the provided checkpoint has not preserved a scheduler's
+        state dictionary, but self.scheduler is not None, a warning
+        will be printed and the scheduler will be removed
+        (i.e. self.scheduler = None)
+        """
         checkpoint: Checkpoint_t = torch.load(checkpoint_path)
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.epoch = checkpoint["epoch"]
         self.loss = checkpoint["loss"]
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        if self.scheduler and checkpoint["scheduler_state_dict"]:
+            self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        else:
+            self.scheduler = None
+            if self.scheduler:
+                warnings.warn(
+                    "No scheduler found in the checkpoint, removing current one",
+                    RuntimeWarning
+                )
+            elif checkpoint["scheduler_state_dict"]:
+                raise AttributeError(
+                    "Scheduler state found in the checkpoint dictionary"
+                    "but no scheduler has been specified!"
+                )
+
         self.training_time = checkpoint["training_time"]
 
     def save(self, checkpoint_path: str) -> None:
+        """
+        Given the checkpoint path, collect all info into
+        a Checkpoint_t dictionary and use torch to save it
+        at the given path.
+        """
         checkpoint: Checkpoint_t = {
             "model_state_dict": self.model.state_dict(),
             "epoch":self.epoch,
             "loss":self.loss,
             "optimizer_state_dict": self.optimizer.state_dict(),
-            "scheduler_state_dict": self.scheduler.state_dict(),
+            "scheduler_state_dict": getattr(self.scheduler, "state_dict" , None),
             "training_time":self.training_time
         }
         torch.save(checkpoint, checkpoint_path)
 
+    def _collate_fn(self, data: list[BoundBoxDataset_Item]) -> Tuple[list[torch.Tensor], list[Dict[str, torch.Tensor]]]:
+        """ 
+        Created a custom collate_fn, because the default one stacks vertically
+        the tensors.
+
+        Based on the example at:
+        https://pytorch.org/vision/main/models/generated/torchvision.models.detection.fasterrcnn_resnet50_fpn.html#torchvision.models.detection.fasterrcnn_resnet50_fpn
+        The fasterrcnn_resnet50_fpn model requires the collate function
+        to return images, as a list of tensors and targets, as a list of dictionaries. 
+        These dictionaries should be structured as:
+        - boxes (FloatTensor[N, 4]): the ground-truth boxes in [x1, y1, x2, y2] format.
+        - labels (Int64Tensor[N]): the class label for each ground-truth box
+
+        This function also moves the tensors to the correct device, found at FasterRCNN's initialization.
+
+        TODO(?): Update the code to support multiple BoundingBoxes with different labels for each image.
+        """
+        images = []
+        target = []
+        for d in data:
+            images.append(d["image"])
+            temp_dict = {}
+            # Unsqueeze is required here because there are no other boxes.
+            # Since FasterRCNN and SSD both need a 2d FloatTensor
+            # where dim0 is the number of boxes in the current image and dim1
+            # is the bounds of those boxes.
+            temp_dict["boxes"] = d["bounding_box"]["boxes"].unsqueeze(0)
+            temp_dict["labels"] = d["bounding_box"]["labels"]
+            target.append(temp_dict)
+        return images, target
+
+    def _show_bounding_boxes_batch(self, images_batch: torch.Tensor, target_batch: list[Dict[str, torch.Tensor]]):
+        """Show image with landmarks for a batch of samples."""
+        batch_size = len(images_batch)
+        fig = plt.figure(figsize=(8,8))
+        plt.title('Batch from dataloader')
+        plt.axis('off')
+
+        for i in range(batch_size):
+            tens = target_batch[i]["boxes"][0]
+            rows, cols = tens.shape
+            x = []
+            y = []
+            ax = fig.add_subplot(1, batch_size, i+1) # type: ignore
+            ax.imshow(images_batch[i].permute(1, 2, 0))
+            for row in range(rows):
+                for (i, el) in enumerate(tens[row]):
+                        if i % 2 == 0:
+                            x.append(el.item())
+                        else:
+                            y.append(el.item())
+                rect = patches.Rectangle(
+                        (x[0], y[0]), abs(x[0] - x[1]), abs(y[0] - y[1]), 
+                        linewidth=1, edgecolor='r', facecolor='none'
+                    )
+                ax.add_patch(rect)
+        plt.show()
 
     def train(self, num_epochs: int = config.num_epochs) -> None:
         """
@@ -169,7 +306,7 @@ class FasterRCNN():
         best_model_wts = copy.deepcopy(self.model.state_dict())
 
         # Train for num_epochs
-        if config.profile: self.prof.start()
+        if self.prof: self.prof.start()
         for epoch in range(self.epoch, self.epoch + num_epochs):
             print(f'\n\nEpoch {epoch}/{self.epoch + num_epochs - 1}')
             print('-' * 10)
@@ -223,8 +360,8 @@ class FasterRCNN():
                         if phase == "train":
                             loss.backward()
                             self.optimizer.step()
-                            self.scheduler.step()
-                            if config.profile: self.prof.step()
+                            if self.scheduler: self.scheduler.step()
+                            if self.prof: self.prof.step()
                     
                     # statistics
                     running_loss += loss.item()
@@ -235,20 +372,39 @@ class FasterRCNN():
                 # Revert last epoch if the validation loss is larger
                 if phase == 'val' and running_loss > min_loss:
                     self.model.load_state_dict(best_model_wts)
-                else:
+                elif phase == 'val' and running_loss < min_loss:
                     min_loss = running_loss
                     best_model_wts = copy.deepcopy(self.model.state_dict())
         
-        if config.profile: self.prof.stop()
+        if self.prof: self.prof.stop()
+        
+        # Update objects state
         time_elapsed = time.time() - since
         self.epoch = self.epoch + num_epochs
         self.loss = min_loss
         self.training_time += time_elapsed
+
+        # Print some info about the training session
         print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
         print(f'Total training time {self.training_time // 60:.0f}m {time_elapsed % 60:.0f}s')
 
     @torch.no_grad()
-    def eval(self, image: torch.Tensor) -> Optional[BoundingBox]:
+    def eval(self,
+             image: torch.Tensor,
+             visualize: bool = False
+        ) -> Optional[BoundingBox]:
+        """
+        Uses the network to predict the bounding box on a given image.
+        Returns only a single bounding box as a BoundingBox object.
+        If there are no bounding boxes, it returns None
+
+        Args:
+        - image: The image (in cpu) to run inference for
+        - visualize: When set to True a matplotlib plot
+                     will be used to display the bounding
+                     box on the image.
+        """
+        
         # Move the image to device
         dev_image = image.to(self.device)
         # Prepare the model for evaluation
@@ -264,16 +420,35 @@ class FasterRCNN():
                            x2=first_box[2], y2=first_box[3],
                            label=first_label
                         )
-        # bbox_dict = bbox.to_dict()
-        # bbox_dict["boxes"] = bbox_dict["boxes"].unsqueeze(0).unsqueeze(0)
-        # self._show_bounding_boxes_batch(image.unsqueeze(0), [bbox_dict])
-        return bbox
+        if visualize:
+            bbox_dict = bbox.to_dict()
+            bbox_dict["boxes"] = bbox_dict["boxes"].unsqueeze(0).unsqueeze(0)
+            self._show_bounding_boxes_batch(image.unsqueeze(0), [bbox_dict])
 
+        return bbox
+    
     @torch.no_grad()
     def visualize_evaluation(self, batch_size: int = 1):
+        """
+        Runs the model inference on testing data, found at
+        root_test_dir location and displays the output in a matplotlib
+        figure.
+        
+        Args:
+        - batch_size: The number of images to run the inference and
+                      display for.
+        """
+        # Throw an error if one attempts to visualize the evaluation of the
+        # network on the testing data, without having specified the
+        # required paths
+        if not self.can_visualize:
+            raise Exception("Paths required for visualizing the testing data"
+                            "have not been specified"
+                        )
+        
         dataset = BoundingBoxDataset(
-                    root_dir="data/empty_map/train/", 
-                    json_file="data/empty_map/train/empty_map.json"
+                    root_dir=self.root_dirs["eval"], 
+                    json_file=self.json_labels["eval"]
                   )
         dataloader = DataLoader(
                         dataset, batch_size=batch_size, shuffle=True,
@@ -281,7 +456,7 @@ class FasterRCNN():
                     )
 
         images, _ = next(iter(dataloader))
-        dev_images = [image.to(torch.device("cpu")) for image in images]
+        dev_images = [image.to(self.device) for image in images]
         self.model.eval()
         dev_preds = self.model(dev_images)
         # Move predictions (stored in device) to the cpu
@@ -293,62 +468,3 @@ class FasterRCNN():
           pred.append(temp)
         # Display the predicted bounding boxes
         self._show_bounding_boxes_batch(images, pred)
-
-    def _collate_fn(self, data: list[BoundBoxDataset_Item]) -> Tuple[list[torch.Tensor], list[Dict[str, torch.Tensor]]]:
-        """ 
-        Created a custom collate_fn, because the default one stacks vertically
-        the tensors.
-
-        Based on the example at:
-        https://pytorch.org/vision/main/models/generated/torchvision.models.detection.fasterrcnn_resnet50_fpn.html#torchvision.models.detection.fasterrcnn_resnet50_fpn
-        The fasterrcnn_resnet50_fpn model requires from the collate function 
-        to return images, as a list of tensors 
-        and targets, as a list of dictionaries. 
-        These dictionaries should be structured as:
-        - boxes (FloatTensor[N, 4]): the ground-truth boxes in [x1, y1, x2, y2] format.
-        - labels (Int64Tensor[N]): the class label for each ground-truth box
-
-        This function also moves the tensors to the correct device, found at FasterRCNN's initialization.
-
-        TODO(?): Update the code to support multiple BoundingBoxes with different labels for each image.
-        """
-        images = []
-        target = []
-        for d in data:
-            images.append(d["image"])
-            temp_dict = {}
-            # Unsqueeze is required here because there are no other boxes.
-            # Since fasterrcnn_resnet50_fpn requires we pass a 2d FloatTensor
-            # where dim0 is the number of boxes in the current image and dim1
-            # is the bounds of those boxes.
-            temp_dict["boxes"] = d["bounding_box"]["boxes"].unsqueeze(0)
-            temp_dict["labels"] = d["bounding_box"]["labels"]
-            target.append(temp_dict)
-        return images, target
-
-    def _show_bounding_boxes_batch(self, images_batch: torch.Tensor, target_batch: list[Dict[str, torch.Tensor]]):
-        """Show image with landmarks for a batch of samples."""
-        batch_size = len(images_batch)
-        fig = plt.figure(figsize=(8,8))
-        plt.title('Batch from dataloader')
-        plt.axis('off')
-
-        for i in range(batch_size):
-            tens = target_batch[i]["boxes"][0]
-            rows, cols = tens.shape
-            x = []
-            y = []
-            ax = fig.add_subplot(1, batch_size, i+1) # type: ignore
-            ax.imshow(images_batch[i].permute(1, 2, 0))
-            for row in range(rows):
-                for (i, el) in enumerate(tens[row]):
-                        if i % 2 == 0:
-                            x.append(el.item())
-                        else:
-                            y.append(el.item())
-                rect = patches.Rectangle(
-                        (x[0], y[0]), abs(x[0] - x[1]), abs(y[0] - y[1]), 
-                        linewidth=1, edgecolor='r', facecolor='none'
-                    )
-                ax.add_patch(rect)
-        plt.show()

@@ -10,14 +10,17 @@ from torchvision import transforms as T
 from models.UAV import UAV
 from GlobalConfig import GlobalConfig as config
 from models.BoundingBox import BoundingBox
-from nets.FasterRCNN import FasterRCNN
+from nets.DetectionNets import Detection_FasterRCNN
+from nets.DetectionNets import Detection_SSD
 
 class EgoUAV(UAV):
     def __init__(self, name: str, port: int = 41451) -> None:
         super().__init__(name, port)
         # Initialize the NN
-        self.rcnn = FasterRCNN()
+        self.rcnn = Detection_FasterRCNN()
         self.rcnn.model.load_state_dict(torch.load("nets/trained/faster_rcnn_state_dict_epoch50"))
+        self.ssd = Detection_SSD()
+        self.ssd.load("nets/checkpoints/ssd.checkpoint")
 
 
     def _getImage(self, view_mode: bool = False) -> torch.Tensor:

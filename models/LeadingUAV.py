@@ -123,10 +123,6 @@ class LeadingUAV(UAV):
             lead_local_pos.z_val = self.min_z
             offset.z_val = self.min_z - uav.simGetGroundTruthKinematics().position.z_val
 
-        # offset = airsim.Vector3r(14.524488722836576, -3.9391929802995307, -6.169142644866273)
-        # lead_ego_dist_coord_frame_offset = self.sim_global_coord_frame_origin - uav.sim_global_coord_frame_origin
-        # lead_local_pos = uav.simGetGroundTruthKinematics().position + offset - lead_ego_dist_coord_frame_offset
-
         if print_offset:
             print(f"Target offset: (x={offset.x_val}, y={offset.y_val}, z={offset.z_val})")
 

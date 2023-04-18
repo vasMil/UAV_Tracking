@@ -33,8 +33,8 @@ def generate_training_data(
     client.confirmConnection()
 
     # Create the vehicles and perform the takeoff
-    leadingUAV = LeadingUAV(client, "LeadingUAV", config.leadingUAV_seed)
-    egoUAV = EgoUAV(client, "EgoUAV")
+    leadingUAV = LeadingUAV("LeadingUAV", seed=config.leadingUAV_seed)
+    egoUAV = EgoUAV("EgoUAV")
     egoUAV.lastAction.join()
     leadingUAV.lastAction.join()
 

@@ -50,6 +50,7 @@ class DetectionNetBench():
         5. Implement a checkpoint dictionary that can be saved and loaded,
            given only the path.
         6. Provide a visualization function for the evaluation.
+        7. Caclulate the inference frequency of the model
         
     """
     def __init__(self,
@@ -64,7 +65,9 @@ class DetectionNetBench():
         - If only used for evaluation (via the eval() method), you may
         ignore all parameters, but you need to load a checkpoint. This
         checkpoint can be saved using the save() method, after training.
-        - I you just want to visualize a test image, need only to specify
+        - If you just want to visualize a test image, need only to specify
+        the test arguments (i.e. root_test_dir and json_test_labels).
+        - If you just want to get the inference frequency need only to specify
         the test arguments (i.e. root_test_dir and json_test_labels).
 
         Args:
@@ -88,7 +91,7 @@ class DetectionNetBench():
         ):
             self.can_train = True
         if root_test_dir and json_test_labels:
-            self.can_visualize = True
+            self.can_test = True
 
         # Organize the arguments into dictionaries
         self.root_dirs = {
@@ -441,14 +444,13 @@ class DetectionNetBench():
         # Throw an error if one attempts to visualize the evaluation of the
         # network on the testing data, without having specified the
         # required paths
-        if not self.can_visualize:
-            raise Exception("Paths required for visualizing the testing data"
-                            "have not been specified"
-                        )
+        if not self.can_test:
+            raise Exception("Paths required for visualizing the testing data\
+                             have not been specified")
         
         dataset = BoundingBoxDataset(
-                    root_dir=self.root_dirs["eval"], 
-                    json_file=self.json_labels["eval"]
+                    root_dir=self.root_dirs["val"], 
+                    json_file=self.json_labels["val"]
                   )
         dataloader = DataLoader(
                         dataset, batch_size=batch_size, shuffle=True,
@@ -468,3 +470,69 @@ class DetectionNetBench():
           pred.append(temp)
         # Display the predicted bounding boxes
         self._show_bounding_boxes_batch(images, pred)
+
+    def get_inference_frequency(self, num_tests: int, warmup: int, cudnn_benchmark: bool = False) -> None:
+        """
+        Times some inferences in order to calculate the frequency the NN it hosts
+        operates at.
+        It will print the time required for the first inference to run and
+        the average of num_tests inferences. 
+        This test is going to be performed twice and thus 4 metrics are going
+        to be printed:
+        The first 2 metrics are for moving the data to the device and executing
+        self.model() and
+        The other 2 metrics are derived using self.eval()
+        We wanted to observe if there is much delay involved on calling self.model.eval()
+        as well as creating a BoundingBox object (in the cpu) with the data returned,
+        at each inference. (We observed negligible difference which is probably due to
+        moving the inference predictions to the cpu)
+
+        Args:
+        - num_tests: The number of inferences to run in order to determine the average frequency
+        - warmup: The amount of warmup inferences to execute before starting the timer
+        - cudnn_benchmark: Whether to use torch.backends.cudnn.benchmark or not
+        """
+        if not self.can_test:
+            raise Exception("Paths required for calculating the inference frequency\
+                             have not been specified")
+        
+        # Create a dataloader to use in order to fetch images
+        dataset = BoundingBoxDataset(self.root_dirs["val"], self.json_labels["val"])
+        dataloader = DataLoader(dataset=dataset, shuffle=True,
+                                collate_fn=self._collate_fn)
+
+        # Decide whether to benchmark or not
+        torch.backends.cudnn.benchmark = cudnn_benchmark
+
+        # Do some warmup before evaluation
+        for _ in range(warmup):
+            images, _ = next(iter(dataloader))
+            dev_images = [img.to(self.device) for img in images]
+            self.eval(dev_images[0])
+        
+        # Perform the evaluation using self.model()
+        start = time.time()
+        self.model.eval()
+        first: float = 0
+        for i in range(num_tests):
+            images, _ = next(iter(dataloader))
+            dev_images = [img.to(self.device) for img in images]
+            self.model(dev_images)
+            if i == 0: first = time.time()
+
+        end = time.time()
+        # Calculate the average and report to the terminal
+        print(f"The first self.model() required: {first-start} s")
+        print(f"self.model() operates on average at: {num_tests/(end-start)} Hz")
+
+        # Perform the evaluation using self.eval()
+        start = time.time()
+        first: float = 0
+        for i in range(num_tests):
+            images, _ = next(iter(dataloader))
+            self.eval(images[0])
+            if i == 0: first = time.time()
+        end = time.time()
+        # Calculate the average and report to the terminal
+        print(f"The first self.eval() required: {first-start} s")
+        print(f"self.eval() operates on average at: {num_tests/(end-start)} Hz")

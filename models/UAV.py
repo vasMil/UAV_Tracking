@@ -37,7 +37,7 @@ class UAV():
         self.client.enableApiControl(True, vehicle_name=self.name)
         self.client.armDisarm(True, vehicle_name=self.name)
      
-    def moveToPositionAsync(self, x, y, z, velocity=config.leading_velocity) -> Future:
+    def moveToPositionAsync(self, x, y, z, velocity=config.uav_velocity) -> Future:
         """
         Reminder: The airsim API uses the world frame
         ((0,0,0) is the location where the drone spawned)!
@@ -46,7 +46,7 @@ class UAV():
         self.lastAction = self.client.moveToPositionAsync(x, y, z, velocity=velocity, vehicle_name=self.name)
         return self.lastAction
     
-    def moveByVelocityAsync(self, vx, vy, vz, duration) -> Future:
+    def moveByVelocityAsync(self, vx: float, vy: float, vz: float, duration: float) -> Future:
         self.lastAction = self.client.moveByVelocityAsync(vx, vy, vz, duration, vehicle_name=self.name)
         return self.lastAction
 

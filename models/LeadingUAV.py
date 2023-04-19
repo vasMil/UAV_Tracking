@@ -28,23 +28,40 @@ class LeadingUAV(UAV):
 
     def random_move(self, command_time: float) -> Tuple[Future, torch.Tensor]:
         """
-        Moves the UAV using random velocity values for the x and y axis and a height value for the z axis
-        - vx: Should always be a positive value, we will not allow the leading UAV to go backwards
-        - vy: Should allow for movement with max velocity both to the left and to the right
-        - vz : Positive (NED) velocity moves the drone down, negative moves the drone up.
-        Should be careful not to let z value be less than self.min_z
-        
-        Since the velocity is a vector in 3D space, it should have a constant magnitude
-        equal to config.leading_velocity and a changing direction 
-        (with the exeption that x axis should be bounded to only positive values in order to only allow t forward movement).
-        In order to achieve this (i.e. constant magnitude and variable direction) we will randomize the contribution
-        of each axis (x, y, z) to the final velocity vector. This contribution should be normalized so that the square root
-        of the sum of the dimension values squared (i.e. the magnitude) is equal to 1.
-        After that we may multiply with config.leading_velocity in order to get the final velocity vector.
+        Moves the UAV using random velocity values for the x and y axis and a
+        height value for the z axis.
+        - vx: Should always be a positive value, we will not allow the
+        leading UAV to go backwards
+        - vy: Should allow for movement with max velocity both to the
+        left and to the right
+        - vz : Positive (NED) velocity moves the drone down, negative
+        moves the drone up.
 
         Args:
-        - command_time: How long to execute the command for. This information will help us predict future 
-                        collisions with the ground and prevent it, by changing the direction of vz
+        - command_time: How long to run this move for
+        Using this information we can ensure that the z value cannot
+        be less than self.min_z
+
+        More Info:
+        Since the velocity is a vector in 3D space, it should have a constant
+        magnitude equal to config.uav_velocity and a changing direction,
+        bounded by the constants [min_vx, max_vx], [min_vy, max_vy],
+        [min_vz, max_vz] defined in config.
+        In order to achieve this (i.e. constant magnitude and variable
+        direction) we will randomize the contribution of each axis (x, y, z)
+        to the final velocity vector.
+        This contribution should be normalized so that the square root
+        of the sum of the dimension values squared (i.e. the magnitude)
+        is equal to 1.
+        After that we may multiply with config.uav_velocity in order to get the
+        final velocity vector.
+
+        This is an overcontrained problem - decide the BOUNDED velocity on each
+        axis randomly, such that the final 3D vector has a magnitude of
+        config.uav_velocity. Consider the case where the first 2 axis randomly
+        decide 0m/s. The velocity for the third axis will not be random and
+        may also exceed it's bounds (ex. config.uav_velocity = 4,
+        but the upper bound for the velocity on this axis is 1).
         """
         # Create the random contribution vector
         cx = self._randomState.uniform(config.min_vx, config.max_vx)
@@ -55,11 +72,12 @@ class LeadingUAV(UAV):
         # Normalize the contribution vector
         contrib_vec.div_(contrib_vec.pow(2).sum().sqrt().item())
         # Calculate the velocity vector
-        velocity_vec = config.leading_velocity * contrib_vec
+        velocity_vec = config.uav_velocity * contrib_vec
         (vx, vy, vz) = velocity_vec.tolist()
 
-        # Correct for movement that will lead the drone to get at a lower height 
-        # than the one specified by self.min_z (we test for greater than or equal since we are using NED coordinates)
+        # Correct for movement that will lead the drone to get at a lower height
+        # than the one specified by self.min_z
+        # (we test for greater than or equalsince we are using NED coordinates)
         if (self.simGetGroundTruthKinematics()
                 .position.z_val
                 + command_time*vz >= self.min_z
@@ -67,12 +85,15 @@ class LeadingUAV(UAV):
             vz *= -1
         
         # Make sure that the magnitude of the velocity is equal to config.leading_velocity
-        assert(abs(velocity_vec.pow(2).sum().sqrt() - config.leading_velocity) < config.eps)
+        assert(abs(velocity_vec.pow(2).sum().sqrt() - config.uav_velocity) < config.eps)
         self.lastAction = self.moveByVelocityAsync(vx, vy, vz, command_time)
         print(f"{self.name} moveByVelocityAsync: vx = {vx}, vy = {vy}, vz = {vz}")
         return (self.lastAction, velocity_vec)
     
-    def sim_move_within_FOV(self, uav: UAV, print_offset: bool = False) -> Tuple[Future, airsim.Vector3r]:
+    def sim_move_within_FOV(self,
+                            uav: UAV,
+                            print_offset: bool = False
+                        ) -> Tuple[Future, airsim.Vector3r]:
         """
         Move the leadingUAV at a random position, that is within the bounds
         of uav's Field Of View (FOV).

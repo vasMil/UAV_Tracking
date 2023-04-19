@@ -36,9 +36,9 @@ def egoUAV_loop(exit_signal, port: int):
         
     while not exit_status:
         img = egoUAV._getImage()
-        bbox = egoUAV.ssd.eval(img)
+        bbox, score = egoUAV.ssd.eval(img)
         future = egoUAV.moveToBoundingBoxAsync(bbox)
-        print("UAV detected, moving towards it..." if future else "Lost tracking!!!")
+        print(f"UAV detected {score}, moving towards it..." if future else "Lost tracking!!!")
         with exit_signal.get_lock():
             exit_status = exit_signal.value # type: ignore
     egoUAV.disable()

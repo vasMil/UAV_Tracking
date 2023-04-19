@@ -18,7 +18,7 @@ class EgoUAV(UAV):
         super().__init__(name, port)
         # Initialize the NN
         # self.rcnn = Detection_FasterRCNN()
-        # self.rcnn.model.load_state_dict(torch.load("nets/trained/faster_rcnn_state_dict_epoch50"))
+        # self.rcnn.load("nets/checkpoints/rcnn.checkpoint")
         self.ssd = Detection_SSD()
         self.ssd.load("nets/checkpoints/ssd.checkpoint")
 
@@ -196,7 +196,7 @@ class EgoUAV(UAV):
         raise ValueError("_get_z_distance: Invalid mode!")
     
 
-    def moveToBoundingBoxAsync(self, bbox: Optional[BoundingBox]) -> Optional[Future]:
+    def moveToBoundingBoxAsync(self, bbox: Optional[BoundingBox], time_interval: float = 0.) -> Optional[Future]:
         """
         Given a BoundingBox object, calculate its relative distance
         (offset) on the x axis, using the focal length.
@@ -204,6 +204,23 @@ class EgoUAV(UAV):
         y and z axis.
         Lastly, add to your current coordinates this calculated offset
         and move towards that object, using moveToPositionAsync().
+
+        Args:
+        - bbox: The BoundingBox object to move towards | or None
+        - time_interval: 1/(nets inference frequency)
+
+        (If time_interval is not 0 -> the egoUAV will first calculate
+        it's offset from the bbox, normalize it (thus preserving it's direction)
+        and multiply it by the desired velocity (i.e. config.uav_velocity).
+        Converting a distance vector to a velocity vector of a specific
+        magnitude (config.uav_velocity) is an overconstrained problem.
+        Consider a bbox that is further than the maximum distance EgoUAV
+        can travel in time_interval seconds.
+        Else the offset will be directly used as arguments
+        in moveToPositionAsync)
+
+        Note: moveToPositionAsync seems to work the best, the attempt was to
+        make the EgoUAV movement smooth.
         """
         if not bbox:
             return None
@@ -218,10 +235,18 @@ class EgoUAV(UAV):
         # you should fix the offset on the x axis, since the current one is the
         # distance between the camera and the back side of the leadingUAV, but
         # you need to calculate the distance between the centers of the two UAVs.
-        # offset.x_val += config.pawn_size_x
         offset.x_val += config.camera_offset_x + config.pawn_size_x/2
         
         # Calculate the new position on EgoUAV's coordinate system to move at.
-        new_pos = self.getMultirotorState().kinematics_estimated.position + offset
-        self.lastAction = self.moveToPositionAsync(*new_pos)
+        if time_interval:
+            # Normalize the contribution vector
+            contrib_vec = torch.tensor([*offset], dtype=torch.float)
+            contrib_vec.div_(contrib_vec.pow(2).sum().sqrt().item())
+            # Calculate the velocity vector
+            velocity_vec = config.uav_velocity * contrib_vec
+            (vx, vy, vz) = velocity_vec.tolist()
+            self.moveByVelocityAsync(vx, vy, vz, duration=time_interval)
+        else:
+            new_pos = self.getMultirotorState().kinematics_estimated.position + offset
+            self.lastAction = self.moveToPositionAsync(*new_pos)
         return self.lastAction

@@ -218,8 +218,8 @@ class DetectionNetBench():
             "epoch": self.epoch,
             "losses": self.losses,
             "optimizer_state_dict": self.optimizer.state_dict(),
-            "scheduler_state_dict": getattr(self.scheduler, "state_dict" , None),
-            "training_time":self.training_time
+            "scheduler_state_dict": None if not self.scheduler else self.scheduler.state_dict(),
+            "training_time": self.training_time
         }
         torch.save(checkpoint, checkpoint_path)
 
@@ -407,8 +407,9 @@ class DetectionNetBench():
     @torch.no_grad()
     def eval(self,
              image: torch.Tensor,
+             threshold: float = 0.,
              visualize: bool = False
-        ) -> Optional[BoundingBox]:
+        ) -> Tuple[Optional[BoundingBox], Optional[float]]:
         """
         Uses the network to predict the bounding box on a given image.
         Returns only a single bounding box as a BoundingBox object.
@@ -416,32 +417,56 @@ class DetectionNetBench():
 
         Args:
         - image: The image (in cpu) to run inference for
+        - threshold: A float in [0, 1] that determines
+                     the acceptable score for a bbox.
+                     If the model returns bboxes with scores less
+                     than this threshold, None, None will be returned.
         - visualize: When set to True a matplotlib plot
                      will be used to display the bounding
                      box on the image.
+
+        Returns:
+        - A BoundingBox object, along with it's score or None
+        - The score for the detection returned by the model
+        or None.
         """
         
         # Move the image to device
         dev_image = image.to(self.device)
+        
         # Prepare the model for evaluation
         self.model.eval()
+        
         # Handle output returned by inference
         dict = self.model([dev_image])
         if len(dict[0]["boxes"]) == 0:
-            return None
-        first_box = dict[0]["boxes"][0].to("cpu").tolist()
-        first_label = dict[0]["labels"][0].to("cpu").item()
+            return None, None
         
+        # Find the bounding box with the highest score
+        # from those returned
+        best_score_idx = torch.argmax(dict[0]["scores"])
+        
+        # If the score is not acceptable return None
+        score = dict[0]["scores"][best_score_idx].to("cpu").item()
+        if score < threshold:
+            return None, None
+        
+        # There model returned at least one bbox with a score higher
+        # that the threshold, move everything to the cpu, back them
+        # into a BoundingBox object and return it, along with it's score
+        first_box = dict[0]["boxes"][best_score_idx].to("cpu").tolist()
+        first_label = dict[0]["labels"][best_score_idx].to("cpu").item()
         bbox = BoundingBox(x1=first_box[0], y1=first_box[1],
                            x2=first_box[2], y2=first_box[3],
                            label=first_label
                         )
+        
         if visualize:
             bbox_dict = bbox.to_dict()
             bbox_dict["boxes"] = bbox_dict["boxes"].unsqueeze(0).unsqueeze(0)
             self._show_bounding_boxes_batch(image.unsqueeze(0), [bbox_dict])
 
-        return bbox
+        return bbox, score
     
     @torch.no_grad()
     def visualize_evaluation(self, batch_size: int = 1):

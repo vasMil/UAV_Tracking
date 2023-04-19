@@ -9,7 +9,7 @@ class GlobalConfig:
     leadingUAV_seed: Optional[int] = 10
 
     # The magnitude of the velocity vector (in 3D space)
-    leading_velocity: float = 1.
+    uav_velocity: float = 3.
 
     # The upper an lower limit for the velocity on each axis of both UAVs
     max_vx, max_vy, max_vz = 4.,  2.,  1

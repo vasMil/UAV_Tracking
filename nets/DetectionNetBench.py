@@ -1,6 +1,6 @@
 import math
 import time
-from typing import Dict, Tuple, TypedDict, Mapping, Any, Optional
+from typing import Dict, Tuple, List, TypedDict, Mapping, Any, Optional
 import copy
 import warnings
 
@@ -17,11 +17,14 @@ from models.BoundingBox import BoundingBoxDataset, BoundBoxDataset_Item, Boundin
 
 from GlobalConfig import GlobalConfig as config
 
+class Losses_dict_t(TypedDict):
+    train: List[float]
+    val: List[float]
 
 class Checkpoint_t(TypedDict):
     model_state_dict: Mapping[str, Any]
     epoch: int
-    loss: float
+    losses: Losses_dict_t
     optimizer_state_dict: dict[Any, Any]
     scheduler_state_dict: Optional[dict[Any, Any]]
     training_time: float
@@ -72,7 +75,7 @@ class DetectionNetBench():
 
         Args:
         - model: The detection model you want to wrap.
-        - model_id: A string to use when profiling
+        - model_id: A string to use when profiling or plotting losses
         - root_train_dir: The root directory, where all training image
                           files are located.
         - json_train_labels: Path to the json file exported using
@@ -119,11 +122,18 @@ class DetectionNetBench():
 
         # Model
         self.model = model.to(self.device)
+        self.model_id = model_id
+
+        # Model parameters
+        self.batch_size = config.default_batch_size
 
         # Checkpoint info
         self.epoch: int = 0
-        self.loss: float = math.inf
         self.training_time: float = 0.
+        self.losses: Losses_dict_t = {
+            "train": [],
+            "val": []
+        }
 
         # Found out the line of code -after the comments- here:
         # https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html
@@ -178,7 +188,7 @@ class DetectionNetBench():
         checkpoint: Checkpoint_t = torch.load(checkpoint_path)
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.epoch = checkpoint["epoch"]
-        self.loss = checkpoint["loss"]
+        self.losses = checkpoint["losses"]
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         if self.scheduler and checkpoint["scheduler_state_dict"]:
             self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
@@ -205,8 +215,8 @@ class DetectionNetBench():
         """
         checkpoint: Checkpoint_t = {
             "model_state_dict": self.model.state_dict(),
-            "epoch":self.epoch,
-            "loss":self.loss,
+            "epoch": self.epoch,
+            "losses": self.losses,
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": getattr(self.scheduler, "state_dict" , None),
             "training_time":self.training_time
@@ -294,7 +304,7 @@ class DetectionNetBench():
         }
         dataloaders = {
             x: DataLoader(
-                datasets[x], batch_size=config.batch_size, shuffle=True, 
+                datasets[x], batch_size=self.batch_size, shuffle=True, 
                 num_workers=config.num_workers,
                 collate_fn=self._collate_fn
             ) for x in ["train", "val"]
@@ -305,7 +315,7 @@ class DetectionNetBench():
         # gradient calculation (autograd) will be disabled.
         self.model.train()
 
-        min_loss = self.loss
+        min_loss = math.inf if not self.losses["val"] else self.losses["val"][-1]
         best_model_wts = copy.deepcopy(self.model.state_dict())
 
         # Train for num_epochs
@@ -371,20 +381,23 @@ class DetectionNetBench():
         
                 # Print the loss for each phase
                 print(f"Phase {phase}: loss = {running_loss}")
-                
+        
+                # Preserve the loss value so you may later plot them and 
+                # decide whether the model is fully trained
+                self.losses[phase].append(running_loss)
+
                 # Revert last epoch if the validation loss is larger
                 if phase == 'val' and running_loss > min_loss:
                     self.model.load_state_dict(best_model_wts)
-                elif phase == 'val' and running_loss < min_loss:
+                elif phase == 'val' and (running_loss < min_loss):
                     min_loss = running_loss
                     best_model_wts = copy.deepcopy(self.model.state_dict())
-        
+                
         if self.prof: self.prof.stop()
         
         # Update objects state
         time_elapsed = time.time() - since
         self.epoch = self.epoch + num_epochs
-        self.loss = min_loss
         self.training_time += time_elapsed
 
         # Print some info about the training session
@@ -536,3 +549,11 @@ class DetectionNetBench():
         # Calculate the average and report to the terminal
         print(f"The first self.eval() required: {first-start} s")
         print(f"self.eval() operates on average at: {num_tests/(end-start)} Hz")
+
+    def plot_losses(self) -> None:
+        _, ax = plt.subplots()
+        ax.set_title(f"Losses for model: {self.model_id}")
+        for phase in ["train", "val"]:
+            ax.plot(range(self.epoch), self.losses[phase], label=phase)
+        ax.legend()
+        plt.show()

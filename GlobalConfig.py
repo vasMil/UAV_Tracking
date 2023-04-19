@@ -88,9 +88,9 @@ class GlobalConfig:
     # increase wait_stationarity.
     measurement_threshold = (0.1, 0.1, 0.1)
 
-    # FasterRCNN constants
+    # Detection NN constants
     num_epochs = 25
-    batch_size = 4
+    default_batch_size = 4
     num_workers = 0
     sgd_learning_rate = 0.001
     sgd_momentum = 0.9

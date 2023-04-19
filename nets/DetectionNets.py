@@ -24,6 +24,8 @@ class Detection_FasterRCNN(DetectionNetBench):
                          root_test_dir,
                          json_test_labels
                     )
+        # Overwrite default behaviour of DetectionNetBench
+        self.batch_size = 4
         if not config.profile: self.prof = None
 
 class Detection_SSD(DetectionNetBench):
@@ -34,7 +36,7 @@ class Detection_SSD(DetectionNetBench):
                  json_test_labels: str = ""
             ) -> None:
         # Customize the model
-        backbone = vgg16(weights=None, progress=True)
+        backbone = vgg16(progress=True)
         backbone = _vgg_extractor(backbone, False, 5)
         
         # Source: https://github.com/pytorch/vision/blob/5b07d6c9c6c14cf88fc545415d63021456874744/torchvision/models/detection/ssd.py#L466
@@ -57,5 +59,7 @@ class Detection_SSD(DetectionNetBench):
                          root_test_dir,
                          json_test_labels
                     )
+        # Overwrite default behaviour of DetectionNetBench
+        self.batch_size = 32
         self.scheduler = None
         if not config.profile: self.prof = None

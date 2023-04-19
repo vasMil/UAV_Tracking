@@ -5,3 +5,4 @@ nets/trained/
 nets/checkpoints/
 log/
 focal_length.png
+.venv/

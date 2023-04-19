@@ -17,8 +17,8 @@ class EgoUAV(UAV):
     def __init__(self, name: str, port: int = 41451) -> None:
         super().__init__(name, port)
         # Initialize the NN
-        self.rcnn = Detection_FasterRCNN()
-        self.rcnn.model.load_state_dict(torch.load("nets/trained/faster_rcnn_state_dict_epoch50"))
+        # self.rcnn = Detection_FasterRCNN()
+        # self.rcnn.model.load_state_dict(torch.load("nets/trained/faster_rcnn_state_dict_epoch50"))
         self.ssd = Detection_SSD()
         self.ssd.load("nets/checkpoints/ssd.checkpoint")
 

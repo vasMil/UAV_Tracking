@@ -17,9 +17,8 @@ def leadingUAV_loop(exit_signal, port: int, time_interval: int):
     leadingUAV.lastAction.join()
     with exit_signal.get_lock():
         exit_status = exit_signal.value # type: ignore
-    # time.sleep(60)
     while not exit_status:
-        leadingUAV.random_move()
+        leadingUAV.random_move(time_interval)
         time.sleep(time_interval)
         with exit_signal.get_lock():
             exit_status = exit_signal.value # type: ignore

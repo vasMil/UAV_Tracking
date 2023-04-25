@@ -37,17 +37,34 @@ class UAV():
         self.client.enableApiControl(True, vehicle_name=self.name)
         self.client.armDisarm(True, vehicle_name=self.name)
      
-    def moveToPositionAsync(self, x, y, z, velocity=config.uav_velocity) -> Future:
+    def moveToPositionAsync(self, x, y, z,
+                            velocity=config.uav_velocity,
+                            drivetrain: int = airsim.DrivetrainType.MaxDegreeOfFreedom,
+                            yaw_mode: airsim.YawMode = airsim.YawMode()
+                        ) -> Future:
         """
         Reminder: The airsim API uses the world frame
         ((0,0,0) is the location where the drone spawned)!
         (source: https://github.com/microsoft/AirSim/issues/4413)
         """
-        self.lastAction = self.client.moveToPositionAsync(x, y, z, velocity=velocity, vehicle_name=self.name)
+        # self.lastAction = self.client.moveToPositionAsync(x, y, z, velocity=velocity, vehicle_name=self.name, yaw_mode=yaw_mode)
+        self.lastAction = self.client.moveToPositionAsync(x, y, z,
+                                                          velocity=velocity,
+                                                          drivetrain=drivetrain,
+                                                          yaw_mode=yaw_mode,
+                                                          vehicle_name=self.name)
         return self.lastAction
     
-    def moveByVelocityAsync(self, vx: float, vy: float, vz: float, duration: float) -> Future:
-        self.lastAction = self.client.moveByVelocityAsync(vx, vy, vz, duration, vehicle_name=self.name)
+    def moveByVelocityAsync(self, vx, vy, vz,
+                            duration,
+                            drivetrain: int = airsim.DrivetrainType.MaxDegreeOfFreedom,
+                            yaw_mode: airsim.YawMode = airsim.YawMode()
+                        ) -> Future:
+        self.lastAction = self.client.moveByVelocityAsync(vx, vy, vz,
+                                                          duration,
+                                                          yaw_mode=yaw_mode,
+                                                          drivetrain=drivetrain,
+                                                          vehicle_name=self.name)
         return self.lastAction
 
     def getMultirotorState(self) -> airsim.MultirotorState:

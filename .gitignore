@@ -6,3 +6,4 @@ nets/checkpoints/
 log/
 focal_length.png
 .venv/
+recordings/

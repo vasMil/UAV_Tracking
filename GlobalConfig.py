@@ -9,11 +9,15 @@ class GlobalConfig:
     leadingUAV_seed: Optional[int] = 10
 
     # The magnitude of the velocity vector (in 3D space)
-    uav_velocity: float = 3.
+    uav_velocity: float = 5.
+
+    # The minimum score, for which a detection is considered
+    # valid and thus is translated to EgoUAV movement.
+    score_threshold: float = 0.5
 
     # The upper an lower limit for the velocity on each axis of both UAVs
-    max_vx, max_vy, max_vz = 4.,  2.,  1
-    min_vx, min_vy, min_vz = 0., -2., -1
+    max_vx, max_vy, max_vz = 4.,  2.,  0
+    min_vx, min_vy, min_vz = 0., -2.,  0
 
     # How much time should each move airsim api call last for
     # (ex. moveByVelocityAsync, duration argument)

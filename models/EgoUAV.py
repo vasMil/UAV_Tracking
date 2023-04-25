@@ -17,10 +17,10 @@ class EgoUAV(UAV):
     def __init__(self, name: str, port: int = 41451) -> None:
         super().__init__(name, port)
         # Initialize the NN
-        # self.rcnn = Detection_FasterRCNN()
-        # self.rcnn.load("nets/checkpoints/rcnn.checkpoint")
-        self.ssd = Detection_SSD()
-        self.ssd.load("nets/checkpoints/ssd.checkpoint")
+        # self.net = Detection_FasterRCNN()
+        # self.net.load("nets/checkpoints/rcnn.checkpoint")
+        self.net = Detection_SSD()
+        self.net.load("nets/checkpoints/ssd.checkpoint")
 
 
     def _getImage(self, view_mode: bool = False) -> torch.Tensor:
@@ -244,9 +244,16 @@ class EgoUAV(UAV):
             contrib_vec.div_(contrib_vec.pow(2).sum().sqrt().item())
             # Calculate the velocity vector
             velocity_vec = config.uav_velocity * contrib_vec
-            (vx, vy, vz) = velocity_vec.tolist()
-            self.moveByVelocityAsync(vx, vy, vz, duration=time_interval)
+            vel_list = velocity_vec.tolist()
+            yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=(-1*math.atan(offset.y_val/offset.x_val)))
+            self.moveByVelocityAsync(*vel_list,
+                                     duration=time_interval,
+                                     drivetrain=airsim.DrivetrainType.ForwardOnly,
+                                     yaw_mode=yaw_mode)
         else:
             new_pos = self.getMultirotorState().kinematics_estimated.position + offset
-            self.lastAction = self.moveToPositionAsync(*new_pos)
+            yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=(-1*math.atan(offset.y_val/offset.x_val)))
+            self.lastAction = self.moveToPositionAsync(*new_pos,
+                                                       drivetrain=airsim.DrivetrainType.ForwardOnly,
+                                                       yaw_mode=yaw_mode)
         return self.lastAction

@@ -14,13 +14,14 @@ from nets.DetectionNets import Detection_FasterRCNN
 from nets.DetectionNets import Detection_SSD
 
 class EgoUAV(UAV):
-    def __init__(self, name: str, port: int = 41451) -> None:
-        super().__init__(name, port)
+    def __init__(self, name: str, port: int = 41451, genmode: bool = False) -> None:
+        super().__init__(name, port, genmode=genmode)
         # Initialize the NN
-        # self.net = Detection_FasterRCNN()
-        # self.net.load("nets/checkpoints/rcnn.checkpoint")
-        self.net = Detection_SSD()
-        self.net.load("nets/checkpoints/ssd.checkpoint")
+        if not genmode:
+            # self.net = Detection_FasterRCNN()
+            # self.net.load("nets/checkpoints/rcnn.checkpoint")
+            self.net = Detection_SSD()
+            self.net.load("nets/checkpoints/ssd.checkpoint")
 
 
     def _getImage(self, view_mode: bool = False) -> torch.Tensor:
@@ -238,6 +239,7 @@ class EgoUAV(UAV):
         offset.x_val += config.camera_offset_x + config.pawn_size_x/2
         
         # Calculate the new position on EgoUAV's coordinate system to move at.
+        yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=(-1*math.degrees(math.atan(offset.y_val/offset.x_val))))
         if time_interval:
             # Normalize the contribution vector
             contrib_vec = torch.tensor([*offset], dtype=torch.float)
@@ -245,15 +247,14 @@ class EgoUAV(UAV):
             # Calculate the velocity vector
             velocity_vec = config.uav_velocity * contrib_vec
             vel_list = velocity_vec.tolist()
-            yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=(-1*math.atan(offset.y_val/offset.x_val)))
             self.moveByVelocityAsync(*vel_list,
                                      duration=time_interval,
                                      drivetrain=airsim.DrivetrainType.ForwardOnly,
                                      yaw_mode=yaw_mode)
         else:
             new_pos = self.getMultirotorState().kinematics_estimated.position + offset
-            yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=(-1*math.atan(offset.y_val/offset.x_val)))
             self.lastAction = self.moveToPositionAsync(*new_pos,
                                                        drivetrain=airsim.DrivetrainType.ForwardOnly,
                                                        yaw_mode=yaw_mode)
         return self.lastAction
+    

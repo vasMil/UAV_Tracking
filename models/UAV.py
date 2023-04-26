@@ -10,7 +10,7 @@ class UAV():
     - EgoUAV
     """
 
-    def __init__(self, name: str, port: int) -> None:
+    def __init__(self, name: str, port: int, genmode: bool = False) -> None:
         self.name = name
         self.client = airsim.MultirotorClient(port=port)
         print(f"UAV {self.name} listens at port {port}")
@@ -27,7 +27,8 @@ class UAV():
         self.enable()
         
         # Perform takeoff
-        self.lastAction = self.client.takeoffAsync(vehicle_name=name)
+        if not genmode:
+            self.lastAction = self.client.takeoffAsync(vehicle_name=name)
 
     def disable(self) -> None:
         self.client.armDisarm(False, vehicle_name=self.name)
@@ -70,10 +71,23 @@ class UAV():
     def getMultirotorState(self) -> airsim.MultirotorState:
         return self.client.getMultirotorState(vehicle_name=self.name)
 
+    def rotateToYawAsync(self, yaw) -> Future:
+        """
+        Rotates this UAV to a specific yaw angle.
+        
+        Args:
+        - yaw: The angle in degrees.
+        """
+        self.lastAction = self.client.rotateToYawAsync(yaw=yaw, vehicle_name=self.name)
+        return self.lastAction
+
     def simGetObjectPose(self) -> airsim.Pose:
         """ Returns the Pose of the current vehicle, position is in world coordinates """
         return self.client.simGetObjectPose(object_name=self.name)
     
+    def simSetVehiclePose(self, pose: airsim.Pose, ignore_collision=True) -> None:
+        self.client.simSetVehiclePose(pose=pose, ignore_collision=ignore_collision, vehicle_name=self.name)
+
     def simGetGroundTruthKinematics(self) -> airsim.KinematicsState:
         return self.client.simGetGroundTruthKinematics(vehicle_name=self.name)
     
@@ -82,7 +96,10 @@ class UAV():
 
     def simGetCollisionInfo(self) -> airsim.CollisionInfo:
         return self.client.simGetCollisionInfo(vehicle_name=self.name)
-    
+
+    def simTestLineOfSightToPoint(self, geo_point: airsim.GeoPoint):
+            return self.client.simTestLineOfSightToPoint(geo_point, vehicle_name=self.name)
+
     def hasCollided(self) -> bool:
         if self.simGetCollisionInfo().time_stamp > self.last_collision_time_stamp:
             self.last_collision_time_stamp = self.simGetCollisionInfo().time_stamp

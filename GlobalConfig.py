@@ -71,8 +71,6 @@ class GlobalConfig:
     focal_length_y = 13 * (3.5 - camera_offset_x - pawn_size_x/2) / pawn_size_z
 
     # Data generation
-    # The probability with which an empty image will be generated
-    gen_empty_img_prob = 0.05
     # Bounds for random distance between the two UAVs
     min_dist = 3
     max_dist = 15

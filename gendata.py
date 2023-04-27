@@ -37,7 +37,7 @@ def create_sample(
         ego_pose = airsim.Pose(position_val=ego_pos, orientation_val=reset_quarernion)
         egoUAV.simSetVehiclePose(ego_pose)
         # Update to the random orientation
-        ego_pose.orientation = airsim.to_quaternion(pitch=random.uniform(-0.4, 0.4), roll=random.uniform(-1,1), yaw=0)
+        ego_pose.orientation = airsim.to_quaternion(pitch=random.uniform(-0.2, 0.2), roll=random.uniform(-1,1), yaw=0)
         egoUAV.simSetVehiclePose(ego_pose)
         
         _, offset = leadingUAV.sim_move_within_FOV(egoUAV, execute=False)
@@ -47,7 +47,7 @@ def create_sample(
         lead_pose = airsim.Pose(position_val=lead_pos, orientation_val=reset_quarernion)
         leadingUAV.simSetVehiclePose(lead_pose)
         # Update to the random orientation
-        lead_pose.orientation = airsim.to_quaternion(pitch=random.uniform(-1, -1), roll=random.uniform(-1, 1), yaw=random.uniform(-1, 1))
+        lead_pose.orientation = airsim.to_quaternion(pitch=random.uniform(-0.1, -0.1), roll=random.uniform(-1, 1), yaw=random.uniform(-0.2, 0.2))
         leadingUAV.simSetVehiclePose(lead_pose)
 
         if egoUAV.simTestLineOfSightToPoint(leadingUAV.simGetGroundTruthEnvironment().geo_point):

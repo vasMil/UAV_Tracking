@@ -379,8 +379,11 @@ class DetectionNetBench():
                     # statistics
                     running_loss += loss.item()
         
+                # Get the mean of all losses
+                running_loss /= len(datasets[phase])
+
                 # Print the loss for each phase
-                print(f"Phase {phase}: loss = {running_loss}")
+                print(f"Phase {phase}: average loss = {running_loss}")
         
                 # Preserve the loss value so you may later plot them and 
                 # decide whether the model is fully trained

@@ -13,7 +13,7 @@ class GlobalConfig:
 
     # The minimum score, for which a detection is considered
     # valid and thus is translated to EgoUAV movement.
-    score_threshold: float = 0.5
+    score_threshold: float = 0.
 
     # The upper an lower limit for the velocity on each axis of both UAVs
     max_vx, max_vy, max_vz = 4.,  2.,  0

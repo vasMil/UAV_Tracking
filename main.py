@@ -199,6 +199,4 @@ def tracking_at_frequency(sim_fps: int = 60,
     client.reset()
 
 if __name__ == '__main__':
-    # tracking_at_frequency(simulation_time_s=120, infer_freq_Hz=30)
-    from gendata import generate_training_data
-    generate_training_data("data/empty_map/test/empty_map_positions.csv", "data/empty_map/test/", num_samples=100)
+    tracking_at_frequency(simulation_time_s=20, infer_freq_Hz=30)

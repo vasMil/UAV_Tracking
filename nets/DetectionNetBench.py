@@ -54,7 +54,11 @@ class DetectionNetBench():
            given only the path.
         6. Provide a visualization function for the evaluation.
         7. Caclulate the inference frequency of the model
-        
+
+    WARNING: The default optimizer has a weight_decay!
+    If you remove this weight_decay, the network params will only be updated
+    if the running validation loss is less than the overall minimum loss the
+    network has ever achieved.
     """
     def __init__(self,
                  model: nn.Module,
@@ -292,6 +296,8 @@ class DetectionNetBench():
         if not self.can_train:
             raise Exception("Paths required for training have not been specified")
         
+        weight_decay_off: bool = (self.optimizer.param_groups[0]["weight_decay"] == 0)
+
         # Get the current time (in seconds) at which the training starts
         since = time.time()
 
@@ -315,7 +321,12 @@ class DetectionNetBench():
         # gradient calculation (autograd) will be disabled.
         self.model.train()
 
-        min_loss = math.inf if not self.losses["val"] else self.losses["val"][-1]
+        if not self.losses["val"]:
+            min_loss = math.inf
+        elif weight_decay_off:
+            min_loss = min(self.losses["val"])
+        else:
+            min_loss = self.losses["val"][-1]
         best_model_wts = copy.deepcopy(self.model.state_dict())
 
         # Train for num_epochs
@@ -389,12 +400,14 @@ class DetectionNetBench():
                 # decide whether the model is fully trained
                 self.losses[phase].append(running_loss)
 
-                # Revert last epoch if the validation loss is larger
-                if phase == 'val' and running_loss > min_loss:
-                    self.model.load_state_dict(best_model_wts)
-                elif phase == 'val' and (running_loss < min_loss):
-                    min_loss = running_loss
-                    best_model_wts = copy.deepcopy(self.model.state_dict())
+                # If there is no weight decay and the validation loss is larger
+                # than the current min_loss, revert to last epoch
+                if weight_decay_off and phase =='val':
+                    if running_loss > min_loss:
+                        self.model.load_state_dict(best_model_wts)
+                    else:
+                        min_loss = running_loss
+                        best_model_wts = copy.deepcopy(self.model.state_dict())
                 
         if self.prof: self.prof.stop()
         

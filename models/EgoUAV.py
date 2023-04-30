@@ -232,29 +232,35 @@ class EgoUAV(UAV):
         offset.y_val = self._get_y_distance(offset.x_val, bbox, "focal")
         offset.z_val = self._get_z_distance(offset.x_val, bbox, "focal")
 
+        # Calculate the new position on EgoUAV's coordinate system to move at.
+        # Calculate the yaw_mode so EgoUAV's camera points directly to the LeadingUAV
+        yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=(math.degrees(math.atan(offset.y_val/offset.x_val))))
+
         # Now that you used trigonometry to get the distance on the y and z axis
         # you should fix the offset on the x axis, since the current one is the
         # distance between the camera and the back side of the leadingUAV, but
         # you need to calculate the distance between the centers of the two UAVs.
         offset.x_val += config.camera_offset_x + config.pawn_size_x/2
         
-        # Calculate the new position on EgoUAV's coordinate system to move at.
-        yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=(-1*math.degrees(math.atan(offset.y_val/offset.x_val))))
         if time_interval:
-            # Normalize the contribution vector
-            contrib_vec = torch.tensor([*offset], dtype=torch.float)
-            contrib_vec.div_(contrib_vec.pow(2).sum().sqrt().item())
-            # Calculate the velocity vector
-            velocity_vec = config.uav_velocity * contrib_vec
-            vel_list = velocity_vec.tolist()
-            self.moveByVelocityAsync(*vel_list,
+            # It is important to preserve the LeadingUAV in our FOV.
+            weighted_offset = airsim.Vector3r(offset.x_val*1, offset.y_val*3, offset.z_val*8)
+            len_w_offset = math.sqrt(weighted_offset.x_val**2 + weighted_offset.y_val**2 + weighted_offset.z_val**2)
+            normal_w_offset = weighted_offset / len_w_offset
+            velocity = normal_w_offset * (config.uav_velocity)
+
+            
+            assert(config.uav_velocity - math.sqrt(velocity.x_val**2 + velocity.y_val**2 + velocity.z_val**2) < config.eps)
+            print(f"EgoUAV moving by velocity: {velocity.x_val, velocity.y_val, velocity.z_val}")
+            self.moveByVelocityAsync(velocity.x_val, velocity.y_val, velocity.z_val,
                                      duration=time_interval,
-                                     drivetrain=airsim.DrivetrainType.ForwardOnly,
+                                     drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
                                      yaw_mode=yaw_mode)
         else:
+            offset.z_val *= 5
             new_pos = self.getMultirotorState().kinematics_estimated.position + offset
             self.lastAction = self.moveToPositionAsync(*new_pos,
-                                                       drivetrain=airsim.DrivetrainType.ForwardOnly,
+                                                       drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
                                                        yaw_mode=yaw_mode)
         return self.lastAction
     

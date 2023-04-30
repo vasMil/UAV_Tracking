@@ -6,7 +6,7 @@ class GlobalConfig:
     # The port number airsim if configured to listen to
     port = 41451
     # The seed used for the LeadingUAV random movements
-    leadingUAV_seed: Optional[int] = 10
+    leadingUAV_seed: Optional[int] = None
 
     # The magnitude of the velocity vector (in 3D space)
     uav_velocity: float = 5.
@@ -16,8 +16,8 @@ class GlobalConfig:
     score_threshold: float = 0.
 
     # The upper an lower limit for the velocity on each axis of both UAVs
-    max_vx, max_vy, max_vz = 4.,  2.,  0
-    min_vx, min_vy, min_vz = 0., -2.,  0
+    max_vx, max_vy, max_vz = 5.,  5,  2.5
+    min_vx, min_vy, min_vz = 0., -5, -2.5
 
     # How much time should each move airsim api call last for
     # (ex. moveByVelocityAsync, duration argument)

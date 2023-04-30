@@ -377,9 +377,7 @@ class DetectionNetBench():
                         
                         # Sum all the losses returned by the model, as suggested
                         # at: https://github.com/pytorch/vision/blob/main/references/detection/engine.py
-                        loss = torch.stack(
-                                [loss for loss in loss_dict.values()]
-                            ).sum()
+                        loss: torch.Tensor = sum(loss for loss in loss_dict.values()) # type: ignore
 
                         if phase == "train":
                             loss.backward()

@@ -6,7 +6,7 @@ class GlobalConfig:
     # The port number airsim if configured to listen to
     port = 41451
     # The seed used for the LeadingUAV random movements
-    leadingUAV_seed: Optional[int] = None
+    leadingUAV_seed: Optional[int] = 10
 
     # The magnitude of the velocity vector (in 3D space)
     uav_velocity: float = 5.
@@ -106,3 +106,17 @@ class GlobalConfig:
     prof_warmup = 1
     prof_active = 3
     prof_repeat = 1
+
+    # Controller constants - converting bbox to velocity or position
+    # Weights are added for y and z coords. This is helpful since the
+    # UAV is not going to reach the target position, using a constant
+    # velocity in this small time interval (1/inference_freq_Hz).
+    # The most important aspect of the tracking is to preserve the
+    # LeadingUAV inside your FOV. Thus we require, at the end
+    # of each command, to have the LeadingUAV as close to the center
+    # of our FOV as possible. In order to achieve this we need to allocate
+    # most of velocity's magnitude towards the z axis. The same applies for
+    # the y axis, but this weight may be less, since we also take advantage
+    # of the yaw_mode, in order to achieve this.
+    weight_vel_x, weight_vel_y, weight_vel_z = 1, 1, 8
+    weight_pos_x, weight_pos_y, weight_pos_z = 1, 1, 5

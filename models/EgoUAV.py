@@ -18,11 +18,10 @@ class EgoUAV(UAV):
         super().__init__(name, port, genmode=genmode)
         # Initialize the NN
         if not genmode:
-            # self.net = Detection_FasterRCNN()
-            # self.net.load("nets/checkpoints/rcnn.checkpoint")
-            self.net = Detection_SSD()
-            self.net.load("nets/checkpoints/ssd.checkpoint")
-
+            self.net = Detection_FasterRCNN()
+            self.net.load("nets/checkpoints/rcnn.checkpoint")
+            # self.net = Detection_SSD()
+            # self.net.load("nets/checkpoints/ssd.checkpoint")
 
     def _getImage(self, view_mode: bool = False) -> torch.Tensor:
         """
@@ -52,7 +51,6 @@ class EgoUAV(UAV):
             img = torch.from_numpy(img)
         return img
     
-    
     def _cheat_move(
             self, 
             position_vec: Optional[torch.Tensor] = None, 
@@ -75,7 +73,6 @@ class EgoUAV(UAV):
             self.lastAction = self.moveToPositionAsync(*(position_vec.tolist()))
 
         return self.lastAction
-
 
     def _get_y_distance(self, x_distance: float, bbox: BoundingBox, mode: Literal["focal", "mpp", "fix_focal", "fix_mpp"]) -> float:
         """
@@ -136,7 +133,6 @@ class EgoUAV(UAV):
         
         raise ValueError("_get_z_distance: Invalid mode!")
 
-
     def _get_z_distance(self, x_distance: float, bbox: BoundingBox, mode: Literal["focal", "mpp", "fix_focal", "fix_mpp"]) -> float:
         """
         This function will calculate the distance of the object, on the z axis.
@@ -196,7 +192,6 @@ class EgoUAV(UAV):
         
         raise ValueError("_get_z_distance: Invalid mode!")
     
-
     def moveToBoundingBoxAsync(self, bbox: Optional[BoundingBox], time_interval: float = 0.) -> Optional[Future]:
         """
         Given a BoundingBox object, calculate its relative distance
@@ -234,7 +229,8 @@ class EgoUAV(UAV):
 
         # Calculate the new position on EgoUAV's coordinate system to move at.
         # Calculate the yaw_mode so EgoUAV's camera points directly to the LeadingUAV
-        yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=(math.degrees(math.atan(offset.y_val/offset.x_val))))
+        yaw_deg = math.degrees(math.atan(offset.y_val/offset.x_val)) + self.getPitchRollYaw()[2]
+        yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=yaw_deg)
 
         # Now that you used trigonometry to get the distance on the y and z axis
         # you should fix the offset on the x axis, since the current one is the
@@ -244,23 +240,31 @@ class EgoUAV(UAV):
         
         if time_interval:
             # It is important to preserve the LeadingUAV in our FOV.
-            weighted_offset = airsim.Vector3r(offset.x_val*1, offset.y_val*3, offset.z_val*8)
+            weighted_offset = airsim.Vector3r(offset.x_val*config.weight_vel_x,
+                                              offset.y_val*config.weight_vel_y,
+                                              offset.z_val*config.weight_vel_z,
+                                        )
+            # Normalize the weighted offset
             len_w_offset = math.sqrt(weighted_offset.x_val**2 + weighted_offset.y_val**2 + weighted_offset.z_val**2)
             normal_w_offset = weighted_offset / len_w_offset
+            # Multiply with the magnitude of the target velocity
             velocity = normal_w_offset * (config.uav_velocity)
-
-            
+            # Make sure the target velocity does have the expected magnitude
             assert(config.uav_velocity - math.sqrt(velocity.x_val**2 + velocity.y_val**2 + velocity.z_val**2) < config.eps)
-            print(f"EgoUAV moving by velocity: {velocity.x_val, velocity.y_val, velocity.z_val}")
-            self.moveByVelocityAsync(velocity.x_val, velocity.y_val, velocity.z_val,
-                                     duration=time_interval,
-                                     drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
-                                     yaw_mode=yaw_mode)
+
+            print(f"EgoUAV moving by local coord frame velocity: {velocity.x_val, velocity.y_val, velocity.z_val}")
+            self.moveFrontFirstByVelocityAsync(velocity.x_val, velocity.y_val, velocity.z_val,
+                                               duration=time_interval,
+                                               yaw_deg=yaw_deg
+                                        )
         else:
-            offset.z_val *= 5
+            # Multiply by the weights
+            offset.x_val *= config.weight_pos_x
+            offset.y_val *= config.weight_pos_y
+            offset.z_val *= config.weight_pos_z
             new_pos = self.getMultirotorState().kinematics_estimated.position + offset
             self.lastAction = self.moveToPositionAsync(*new_pos,
                                                        drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
-                                                       yaw_mode=yaw_mode)
+                                                       yaw_mode=yaw_mode
+                                                    )
         return self.lastAction
-    

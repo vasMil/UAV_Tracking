@@ -1,3 +1,7 @@
+from typing import Tuple
+import math
+
+import numpy as np
 import airsim
 from msgpackrpc.future import Future
 
@@ -31,10 +35,16 @@ class UAV():
             self.lastAction = self.client.takeoffAsync(vehicle_name=name)
 
     def disable(self) -> None:
+        """
+        Disarms the vehicle and disables the ApiControl
+        """
         self.client.armDisarm(False, vehicle_name=self.name)
         self.client.enableApiControl(False, vehicle_name=self.name)
      
     def enable(self) -> None:
+        """
+        Enables the ApiControl and arms vehicle 
+        """
         self.client.enableApiControl(True, vehicle_name=self.name)
         self.client.armDisarm(True, vehicle_name=self.name)
      
@@ -44,8 +54,11 @@ class UAV():
                             yaw_mode: airsim.YawMode = airsim.YawMode()
                         ) -> Future:
         """
-        Reminder: The airsim API uses the world frame
-        ((0,0,0) is the location where the drone spawned)!
+        Uses the AirSim API to move this UAV at the specified position (x, y, z),
+        using a constant velocity.
+
+        Reminder: The airsim API considers as the position of the origin point
+        (i.e. (0,0,0)) is the location where the drone spawned!
         (source: https://github.com/microsoft/AirSim/issues/4413)
         """
         # self.lastAction = self.client.moveToPositionAsync(x, y, z, velocity=velocity, vehicle_name=self.name, yaw_mode=yaw_mode)
@@ -61,6 +74,14 @@ class UAV():
                             drivetrain: int = airsim.DrivetrainType.MaxDegreeOfFreedom,
                             yaw_mode: airsim.YawMode = airsim.YawMode()
                         ) -> Future:
+        """
+        Uses the AirSim API to move this UAV at a constant velocity (vx, vy, vz),
+        for duration.
+
+        Reminder: The airsim API considers as the position of the origin point
+        (i.e. (0,0,0)) is the location where the drone spawned!
+        (source: https://github.com/microsoft/AirSim/issues/4413)
+        """
         self.lastAction = self.client.moveByVelocityAsync(vx, vy, vz,
                                                           duration,
                                                           yaw_mode=yaw_mode,
@@ -68,8 +89,53 @@ class UAV():
                                                           vehicle_name=self.name)
         return self.lastAction
 
+    def moveFrontFirstByVelocityAsync(self, vx, vy, vz,
+                                      duration,
+                                      yaw_deg: float = 0.
+                                ) -> Future:
+        """
+        Uses the AirSim API to move this UAV at a constant velocity (vx, vy, vz),
+        for duration, while taking into account the current yaw rotation of the vehicle.
+        This way you may move front-first towards a direction. This direction is in local
+        coordinates.
+        That is that the x axis extends towards where the front of the UAV is pointing at.
+        The other two axes are perpendicular to this.
+        """
+        # Convert yaw_deg to radians in order to calculate cos and sin, using pyhton's math library
+        yaw_rad = math.radians(yaw_deg)
+        # Perform the rotation of the vector (vx, vy, vz) to the world coordinates
+        rot_mat = np.array([[math.cos(yaw_rad), -math.sin(yaw_rad), 0],
+                            [math.sin(yaw_rad),  math.cos(yaw_rad), 0],
+                            [0,                                  0, 1]
+                        ], dtype=np.float64)
+        local_vel = np.array([vx, vy, vz], dtype=np.float64)
+        world_vel = np.matmul(rot_mat, local_vel)
+        # Construct the yaw_mode object
+        yaw_mode = airsim.YawMode(False, yaw_deg)
+        self.lastAction = self.moveByVelocityAsync(*world_vel,
+                                                   duration=duration,
+                                                   drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
+                                                   yaw_mode=yaw_mode
+                                            )
+        return self.lastAction
+
     def getMultirotorState(self) -> airsim.MultirotorState:
         return self.client.getMultirotorState(vehicle_name=self.name)
+
+    def getPitchRollYaw(self) -> Tuple[float, float, float]:
+        """
+        Using getMultirotorState(), it extracts the orientation of this UAV,
+        converts it to eularian angles (which are in radians) and returns the
+        pitch, roll and yaw in degrees, since most AirSim API calls use degrees.
+
+        Retruns:
+        `Tuple[pitch, roll, yaw]` in degrees
+        """
+        pitch, roll, yaw = airsim.to_eularian_angles(self.getMultirotorState().kinematics_estimated.orientation)
+        pitch = math.degrees(pitch)
+        roll = math.degrees(roll)
+        yaw = math.degrees(yaw)
+        return (pitch, roll, yaw,)
 
     def rotateToYawAsync(self, yaw) -> Future:
         """

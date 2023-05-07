@@ -1,5 +1,5 @@
 import math
-from typing import Optional, Literal
+from typing import Optional, Literal, Tuple
 
 import airsim
 from msgpackrpc.future import Future
@@ -18,10 +18,10 @@ class EgoUAV(UAV):
         super().__init__(name, port, genmode=genmode)
         # Initialize the NN
         if not genmode:
-            self.net = Detection_FasterRCNN()
-            self.net.load("nets/checkpoints/rcnn.checkpoint")
-            # self.net = Detection_SSD()
-            # self.net.load("nets/checkpoints/ssd.checkpoint")
+            # self.net = Detection_FasterRCNN()
+            # self.net.load("nets/checkpoints/rcnn.checkpoint")
+            self.net = Detection_SSD()
+            self.net.load("nets/checkpoints/ssd.checkpoint")
 
     def _getImage(self, view_mode: bool = False) -> torch.Tensor:
         """
@@ -192,7 +192,10 @@ class EgoUAV(UAV):
         
         raise ValueError("_get_z_distance: Invalid mode!")
     
-    def moveToBoundingBoxAsync(self, bbox: Optional[BoundingBox], time_interval: float = 0.) -> Optional[Future]:
+    def moveToBoundingBoxAsync(self,
+                               bbox: BoundingBox,
+                               time_interval: float = 0.
+                            ) -> Tuple[Future, float]:
         """
         Given a BoundingBox object, calculate its relative distance
         (offset) on the x axis, using the focal length.
@@ -204,6 +207,12 @@ class EgoUAV(UAV):
         Args:
         - bbox: The BoundingBox object to move towards | or None
         - time_interval: 1/(nets inference frequency)
+
+        Returns:
+        - The Future returned by AirSim, or None
+        - The angle of the two UAVs as estimated by this controller, using
+        only the bbox and current yaw angle of this UAV (i.e. EgoUAV). This
+        angle is in degrees, or None.
 
         (If time_interval is not 0 -> the egoUAV will first calculate
         it's offset from the bbox, normalize it (thus preserving it's direction)
@@ -218,8 +227,6 @@ class EgoUAV(UAV):
         Note: moveToPositionAsync seems to work the best, the attempt was to
         make the EgoUAV movement smooth.
         """
-        if not bbox:
-            return None
         offset = airsim.Vector3r()
         # Calculate the distance (x axis) of the two UAV's, using the
         # camera's focal length
@@ -267,4 +274,4 @@ class EgoUAV(UAV):
                                                        drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
                                                        yaw_mode=yaw_mode
                                                     )
-        return self.lastAction
+        return self.lastAction, yaw_deg

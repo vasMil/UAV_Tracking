@@ -3,13 +3,13 @@ import time, datetime
 import multiprocessing as mp
 
 import airsim
-import torch
 from torchvision.utils import save_image
 
 from GlobalConfig import GlobalConfig as config
 from models.LeadingUAV import LeadingUAV
 from models.EgoUAV import EgoUAV
-from models.BoundingBox import BoundingBox
+from utils.image import add_bbox_to_image, add_angle_info_to_image
+from utils.simulation import sim_calculate_angle
 
 # Make sure move_duration exceeds sleep_duration
 # otherwise in each iteration of the game loop the
@@ -41,8 +41,9 @@ def egoUAV_loop(exit_signal, port: int):
     while not exit_status:
         img = egoUAV._getImage()
         bbox, score = egoUAV.net.eval(img)
-        future = egoUAV.moveToBoundingBoxAsync(bbox)
-        print(f"UAV detected {score}, moving towards it..." if future else "Lost tracking!!!")
+        if bbox:
+            future = egoUAV.moveToBoundingBoxAsync(bbox)
+            print(f"UAV detected {score}, moving towards it..." if future else "Lost tracking!!!")
         with exit_signal.get_lock():
             exit_status = exit_signal.value # type: ignore
     egoUAV.disable()
@@ -79,17 +80,6 @@ def simple_tracking():
     print("\n*****************")
     print("Recording Stopped")
     print("*****************\n")
-
-def add_bbox_to_image(image: torch.Tensor, bbox: BoundingBox) -> None:
-    x1 = max(round(bbox.x1), 0)
-    x2 = min(round(bbox.x2), config.img_width-1)
-    y1 = max(round(bbox.y1), 0)
-    y2 = min(round(bbox.y2), config.img_height-1)
-    for i, color in enumerate([255, 0, 0]):
-        image[i, y1, x1:x2] = color
-        image[i, y2, x1:x2] = color
-        image[i, y1:y2, x1] = color
-        image[i, y1:y2, x2] = color
 
 def tracking_at_frequency(sim_fps: int = 60,
                           simulation_time_s: int = 120,
@@ -157,8 +147,13 @@ def tracking_at_frequency(sim_fps: int = 60,
                 # towards this position
                 bbox, score = egoUAV.net.eval(camera_frame)
                 if bbox and score and score >= config.score_threshold:
-                    future = egoUAV.moveToBoundingBoxAsync(bbox, time_interval=(0.5))
-                    add_bbox_to_image(camera_frame, bbox)
+                    # Calculate the ground truth angle
+                    sim_angle = sim_calculate_angle(egoUAV, leadingUAV)
+                    # Perform the movement
+                    future, estim_angle = egoUAV.moveToBoundingBoxAsync(bbox, time_interval=(0.5))
+                    # Add info on the camera frame
+                    camera_frame = add_bbox_to_image(camera_frame, bbox)
+                    camera_frame = add_angle_info_to_image(camera_frame, estim_angle, sim_angle)
                     save_image(camera_frame, f"{recording_path}/img_EgoUAV_{time.time_ns()}.png")
                     frame_saved = True
                     print(f"UAV detected {score}, moving towards it..." if future else "Lost tracking!!!")
@@ -171,8 +166,11 @@ def tracking_at_frequency(sim_fps: int = 60,
             # Restart the simulation for a few seconds to match
             # the desired sim_fps
             client.simContinueForTime(1/sim_fps)
-    except:
+    except Exception as e:
+        import traceback
         print("There was an error, writing setup file and releasing AirSim...")
+        print("\n" + "*"*10 + " THE ERROR MESSAGE " + "*"*10)
+        traceback.print_exc()
     finally:
         # Write a setup.txt file containing all the important configuration options used for
         # this run
@@ -210,4 +208,4 @@ def tracking_at_frequency(sim_fps: int = 60,
         client.reset()
 
 if __name__ == '__main__':
-    tracking_at_frequency(simulation_time_s=60, infer_freq_Hz=2)
+    tracking_at_frequency(simulation_time_s=60, infer_freq_Hz=10)

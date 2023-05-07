@@ -100,6 +100,10 @@ class UAV():
         coordinates.
         That is that the x axis extends towards where the front of the UAV is pointing at.
         The other two axes are perpendicular to this.
+
+        This issue: https://github.com/microsoft/AirSim/issues/688
+        Suggests you use airsim.DrivetrainType.ForwardOnly and setting yaw_mode
+        to YawMode(False, 0). This would be useful if 
         """
         # Convert yaw_deg to radians in order to calculate cos and sin, using pyhton's math library
         yaw_rad = math.radians(yaw_deg)

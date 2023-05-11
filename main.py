@@ -1,5 +1,6 @@
 import os
 import time, datetime
+import traceback
 
 import airsim
 from torchvision.utils import save_image
@@ -64,6 +65,7 @@ def tracking_at_frequency(sim_fps: int = 60,
         camera_frame = egoUAV._getImage()
         camera_frame_idx = 0
         frame_saved = False
+        prev_bbox = None
         for frame_idx in range(simulation_time_s*sim_fps):
             print(f"\nFRAME: {frame_idx}")
             if frame_idx % round(sim_fps/camera_fps) == 0:
@@ -75,23 +77,33 @@ def tracking_at_frequency(sim_fps: int = 60,
             if frame_idx % (leadingUAV_update_vel_interval_s*sim_fps) == 0:
                 leadingUAV.random_move(leadingUAV_update_vel_interval_s)
             
-            # Get a bounding box and move towards it
+            # Get a bounding box and move towards the previous detection
+            # this way we also simulate the delay between the capture of the frame
+            # and the output of the NN for this frame.
             if frame_idx % round(sim_fps/infer_freq_Hz) == 0:
-                # Get a frame, run egoUAV's detection net and move
-                # towards this position
+                # Run egoUAV's detection net, save the frame with all
+                # required inforamtion. Hold to the bbox, to move towards it when the
+                # next frame for evaluation is captured.
                 bbox, score = egoUAV.net.eval(camera_frame)
                 if bbox and score and score >= config.score_threshold:
                     # Calculate the ground truth angle
                     sim_angle = sim_calculate_angle(egoUAV, leadingUAV)
-                    # Perform the movement
-                    future, estim_angle = egoUAV.moveToBoundingBoxAsync(bbox, time_interval=(0.5))
+                    # Calculate the estimated angle
+                    estim_angle = egoUAV.get_yaw_angle_from_bbox(bbox)
                     # Add info on the camera frame
                     camera_frame = add_bbox_to_image(camera_frame, bbox)
                     camera_frame = add_angle_info_to_image(camera_frame, estim_angle, sim_angle)
                     save_image(camera_frame, f"{recording_path}/img_EgoUAV_{time.time_ns()}.png")
                     frame_saved = True
+                    # Perform the movement for the previous detection
+                    if prev_bbox:
+                        future = egoUAV.moveToBoundingBoxAsync(prev_bbox, time_interval=(0.5))
+                    else:
+                        future = None
                     print(f"UAV detected {score}, moving towards it..." if future else "Lost tracking!!!")
-            
+                # Update
+                prev_bbox = bbox
+
             # If the network did not save last camera frame, save it to preserve the framerate
             if not frame_saved and frame_idx % round(sim_fps/camera_fps) == 0:
                 save_image(camera_frame, f"{recording_path}/img_EgoUAV_{time.time_ns()}.png")
@@ -100,8 +112,7 @@ def tracking_at_frequency(sim_fps: int = 60,
             # Restart the simulation for a few seconds to match
             # the desired sim_fps
             client.simContinueForTime(1/sim_fps)
-    except Exception as e:
-        import traceback
+    except Exception:
         print("There was an error, writing setup file and releasing AirSim...")
         print("\n" + "*"*10 + " THE ERROR MESSAGE " + "*"*10)
         traceback.print_exc()

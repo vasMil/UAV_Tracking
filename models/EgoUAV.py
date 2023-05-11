@@ -192,10 +192,47 @@ class EgoUAV(UAV):
         
         raise ValueError("_get_z_distance: Invalid mode!")
     
+    def _get_yaw_angle(self, dist_x: float, dist_y: float) -> float:
+        """
+        Returns the angle at which the point given by dist_x and dist_y is located.
+        The 2D space is defined by the plane found in the 3D space of the UAVs, at z=z0.
+        Where z0 can be thought of as the position on the z axis of the EgoUAV.
+        (In reality it may be any plane, since we just project the 3D points to the 2D space, by just ignoring
+        the value on the z axis).
+        It is also important to note that the other two axis are defined by the world frame, that is x and y are
+        the world defined axis. BUT the point provided by dist_x and dist_y is on EgoUAV's coordinate frame
+        (i.e. the orientation of the EgoUAV defines the x and y axis)
+
+        Args:
+        dist_x: The distance of the point on the x axis (the x axis is defined in EgoUAV coordinate frame)
+        dist_y: The distance of the point on the y axis (the y axis is defined in EgoUAV coordinate frame)
+
+        Returns:
+        The yaw angle for the EgoUAV, in the global (world) coordinate frame. 
+        """
+        return math.degrees(math.atan(dist_y/dist_x)) + self.getPitchRollYaw()[2]
+    
+    def get_yaw_angle_from_bbox(self, bbox: BoundingBox):
+        """
+        Wraps self._get_yaw_angle() into a function that will also derive the distances
+        required by this method in order to calculate the yaw angle.
+        Thus it may be used by higher level functions.
+
+        Args:
+        bbox: The bounding box, whose center we are going to use as the point for
+        which we will derive the distance.
+
+        Returns:
+        The yaw angle for the EgoUAV, in the global (world) coordinate frame.
+        """
+        dist_x = config.focal_length_x * config.pawn_size_y / bbox.width
+        dist_y = self._get_y_distance(dist_x, bbox, "focal")
+        return self._get_yaw_angle(dist_x, dist_y)
+
     def moveToBoundingBoxAsync(self,
                                bbox: BoundingBox,
                                time_interval: float = 0.
-                            ) -> Tuple[Future, float]:
+                            ) -> Future:
         """
         Given a BoundingBox object, calculate its relative distance
         (offset) on the x axis, using the focal length.
@@ -236,7 +273,7 @@ class EgoUAV(UAV):
 
         # Calculate the new position on EgoUAV's coordinate system to move at.
         # Calculate the yaw_mode so EgoUAV's camera points directly to the LeadingUAV
-        yaw_deg = math.degrees(math.atan(offset.y_val/offset.x_val)) + self.getPitchRollYaw()[2]
+        yaw_deg = self._get_yaw_angle(offset.x_val, offset.y_val)
         yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=yaw_deg)
 
         # Now that you used trigonometry to get the distance on the y and z axis
@@ -274,4 +311,4 @@ class EgoUAV(UAV):
                                                        drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
                                                        yaw_mode=yaw_mode
                                                     )
-        return self.lastAction, yaw_deg
+        return self.lastAction

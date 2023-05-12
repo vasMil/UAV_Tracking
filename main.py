@@ -1,15 +1,11 @@
-import os
-import time, datetime
 import traceback
 
 import airsim
-from torchvision.utils import save_image
 
 from GlobalConfig import GlobalConfig as config
 from models.LeadingUAV import LeadingUAV
 from models.EgoUAV import EgoUAV
-from utils.image import add_bbox_to_image, add_angle_info_to_image
-from utils.simulation import sim_calculate_angle
+from tracking_logging.logger import Logger, GraphLogs
 
 # Make sure move_duration exceeds sleep_duration
 # otherwise in each iteration of the game loop the
@@ -41,12 +37,6 @@ def tracking_at_frequency(sim_fps: int = 60,
     if camera_fps < infer_freq_Hz:
         raise Exception("camera_fps cannot be less that infer_freq_Hz")
 
-    # Create a folder for the recording
-    dt = datetime.datetime.now()
-    recording_path = f"recordings/{dt.year}{dt.month}{dt.day}_{dt.hour}{dt.minute}{dt.second}/images"
-    print(recording_path)
-    os.makedirs(recording_path)
-
     # Create a client to communicate with the UE
     client = airsim.MultirotorClient()
     client.confirmConnection()
@@ -58,20 +48,29 @@ def tracking_at_frequency(sim_fps: int = 60,
     egoUAV.lastAction.join()
     leadingUAV.lastAction.join()
 
+    # Create a Logger
+    logger = Logger(egoUAV,
+                    leadingUAV,
+                    sim_fps=sim_fps,
+                    simulation_time_s=simulation_time_s,
+                    camera_fps=camera_fps,
+                    infer_freq_Hz=infer_freq_Hz,
+                    leadingUAV_update_vel_interval_s=leadingUAV_update_vel_interval_s
+                )
+
     try:
         # Pause the simulation
         client.simPause(True)
 
         camera_frame = egoUAV._getImage()
-        camera_frame_idx = 0
-        frame_saved = False
-        prev_bbox = None
+        bbox, prev_bbox = None, None
+        score, prev_score = None, None
         for frame_idx in range(simulation_time_s*sim_fps):
             print(f"\nFRAME: {frame_idx}")
+            logger.step(prev_bbox != None)
+
             if frame_idx % round(sim_fps/camera_fps) == 0:
                 camera_frame = egoUAV._getImage()
-                frame_saved = False
-                camera_frame_idx += 1
 
             # Update the leadingUAV velocity every update_vel_s*sim_fps frames
             if frame_idx % (leadingUAV_update_vel_interval_s*sim_fps) == 0:
@@ -82,36 +81,30 @@ def tracking_at_frequency(sim_fps: int = 60,
             # and the output of the NN for this frame.
             if frame_idx % round(sim_fps/infer_freq_Hz) == 0:
                 # Run egoUAV's detection net, save the frame with all
-                # required inforamtion. Hold to the bbox, to move towards it when the
+                # required inforamtion. Hold on to the bbox, to move towards it when the
                 # next frame for evaluation is captured.
                 bbox, score = egoUAV.net.eval(camera_frame)
-                if bbox and score and score >= config.score_threshold:
-                    # Calculate the ground truth angle
-                    sim_angle = sim_calculate_angle(egoUAV, leadingUAV)
-                    # Calculate the estimated angle
-                    estim_angle = egoUAV.get_yaw_angle_from_bbox(bbox)
-                    # Add info on the camera frame
-                    camera_frame = add_bbox_to_image(camera_frame, bbox)
-                    camera_frame = add_angle_info_to_image(camera_frame, estim_angle, sim_angle)
-                    save_image(camera_frame, f"{recording_path}/img_EgoUAV_{time.time_ns()}.png")
-                    frame_saved = True
-                    # Perform the movement for the previous detection
-                    if prev_bbox:
-                        future = egoUAV.moveToBoundingBoxAsync(prev_bbox, time_interval=(0.5))
-                    else:
-                        future = None
-                    print(f"UAV detected {score}, moving towards it..." if future else "Lost tracking!!!")
+
+                # Perform the movement for the previous detection
+                if prev_bbox and prev_score and prev_score >= config.score_threshold:
+                    egoUAV.moveToBoundingBoxAsync(prev_bbox, time_interval=(0.5))
+                    print(f"UAV detected {prev_score}, moving towards it...")
+                else:
+                    print("Lost tracking!!!")
+
                 # Update
                 prev_bbox = bbox
+                prev_score = score
+            else:
+                bbox, score = None, None
 
-            # If the network did not save last camera frame, save it to preserve the framerate
-            if not frame_saved and frame_idx % round(sim_fps/camera_fps) == 0:
-                save_image(camera_frame, f"{recording_path}/img_EgoUAV_{time.time_ns()}.png")
-                frame_saved = True
+            if frame_idx % round(sim_fps/camera_fps) == 0:
+                logger.save_frame(camera_frame, bbox)
 
             # Restart the simulation for a few seconds to match
             # the desired sim_fps
             client.simContinueForTime(1/sim_fps)
+
     except Exception:
         print("There was an error, writing setup file and releasing AirSim...")
         print("\n" + "*"*10 + " THE ERROR MESSAGE " + "*"*10)
@@ -119,33 +112,8 @@ def tracking_at_frequency(sim_fps: int = 60,
     finally:
         # Write a setup.txt file containing all the important configuration options used for
         # this run
-        setup_path = os.path.join(recording_path,"../setup.txt")
-        with open(setup_path, 'w') as f:
-            f.write(f"# The upper an lower limit for the velocity on each axis of both UAVs\n"
-                    f"max_vx, max_vy, max_vz = {config.max_vx},  {config.max_vy},  {config.max_vz}\n"
-                    f"min_vx, min_vy, min_vz = {config.min_vx}, {config.min_vy}, {config.min_vz}\n"
-                    f"\n"
-                    f"# The seed used for the random movement of the LeadingUAV\n"
-                    f"leadingUAV_seed = {config.leadingUAV_seed}\n"
-                    f"\n"
-                    f"# The minimum score, for which a detection is considered\n"
-                    f"# valid and thus is translated to EgoUAV movement.\n"
-                    f"score_threshold = {config.score_threshold}\n"
-                    f"\n"
-                    f"# The magnitude of the velocity vector (in 3D space)\n"
-                    f"uav_velocity = {config.uav_velocity}\n"
-                    f"\n"
-                    f"# The weights applied when converting bbox to move command\n"
-                    f"weight_vel_x, weight_vel_y, weight_vel_z = {config.weight_vel_x}, {config.weight_vel_y}, {config.weight_vel_z}\n"
-                    f"weight_pos_x, weight_pos_y, weight_pos_z = {config.weight_pos_x}, {config.weight_pos_y}, {config.weight_pos_z}\n"
-                    f"\n"
-                    f"# Recording setup\n"
-                    f"sim_fps = {sim_fps}\n"
-                    f"simulation_time_s = {simulation_time_s}\n"
-                    f"camera_fps = {camera_fps}\n"
-                    f"infer_freq_Hz = {infer_freq_Hz}\n"
-                    f"leadingUAV_update_vel_interval_s = {leadingUAV_update_vel_interval_s}\n"
-            )
+        logger.write_setup()
+        logger.dump_logs()
 
         client.simPause(False)
         egoUAV.disable()
@@ -154,3 +122,5 @@ def tracking_at_frequency(sim_fps: int = 60,
 
 if __name__ == '__main__':
     tracking_at_frequency(simulation_time_s=60, infer_freq_Hz=10)
+    gl = GraphLogs(pickle_file="recordings/2023512_145828/log.pkl")
+    gl.graph_distance(sim_fps=60)

@@ -246,10 +246,7 @@ class EgoUAV(UAV):
         - time_interval: 1/(nets inference frequency)
 
         Returns:
-        - The Future returned by AirSim, or None
-        - The angle of the two UAVs as estimated by this controller, using
-        only the bbox and current yaw angle of this UAV (i.e. EgoUAV). This
-        angle is in degrees, or None.
+        - The Future returned by AirSim
 
         (If time_interval is not 0 -> the egoUAV will first calculate
         it's offset from the bbox, normalize it (thus preserving it's direction)

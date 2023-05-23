@@ -18,6 +18,7 @@ class BoundingBox():
     def __init__(self,
                  x1: float, y1: float,
                  label: int,
+                 score: Optional[float] = None,
                  x2: Optional[float] = None,
                  y2: Optional[float] = None,
                  height: Optional[float] = None,
@@ -60,7 +61,7 @@ class BoundingBox():
         
         self.x_center = self.x1 + self.width/2
         self.y_center = self.y1 + self.height/2
-
+        self.score = score
 
     def __full_init(self,
                     img_name: str, img_height: int, img_width: int,

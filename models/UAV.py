@@ -156,6 +156,7 @@ class UAV():
         return self.client.simGetObjectPose(object_name=self.name)
     
     def simSetVehiclePose(self, pose: airsim.Pose, ignore_collision=True) -> None:
+        """The position is on the UAV's local coordinate frame"""
         self.client.simSetVehiclePose(pose=pose, ignore_collision=ignore_collision, vehicle_name=self.name)
 
     def simGetGroundTruthKinematics(self) -> airsim.KinematicsState:

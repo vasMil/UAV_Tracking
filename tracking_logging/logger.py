@@ -112,7 +112,6 @@ class Logger:
                     f"\n"
                     f"# The weights applied when converting bbox to move command\n"
                     f"weight_vel_x, weight_vel_y, weight_vel_z = {config.weight_vel_x}, {config.weight_vel_y}, {config.weight_vel_z}\n"
-                    f"weight_pos_x, weight_pos_y, weight_pos_z = {config.weight_pos_x}, {config.weight_pos_y}, {config.weight_pos_z}\n"
                     f"\n"
                     f"# Recording setup\n"
                     f"sim_fps = {self.sim_fps}\n"

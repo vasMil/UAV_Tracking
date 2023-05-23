@@ -421,7 +421,7 @@ class DetectionNetBench():
     @torch.no_grad()
     def eval(self,
              image: torch.Tensor,
-             threshold: float = 0.,
+             threshold: float = config.score_threshold,
              visualize: bool = False
         ) -> Tuple[Optional[BoundingBox], Optional[float]]:
         """
@@ -472,6 +472,7 @@ class DetectionNetBench():
         first_label = dict[0]["labels"][best_score_idx].to("cpu").item()
         bbox = BoundingBox(x1=first_box[0], y1=first_box[1],
                            x2=first_box[2], y2=first_box[3],
+                           score=score,
                            label=first_label
                         )
         

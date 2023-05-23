@@ -170,8 +170,10 @@ class LeadingUAV(UAV):
         offset.z_val = random.uniform(min_z_offset, max_z_offset)
         
         # Change the coordinate frame, so the center is the leadingUAV
-        lead_ego_dist_coord_frame_offset = self.sim_global_coord_frame_origin - uav.sim_global_coord_frame_origin
-        lead_local_pos = uav.simGetGroundTruthKinematics().position + offset - lead_ego_dist_coord_frame_offset
+        lead_local_pos = uav.simGetGroundTruthKinematics().position \
+            - uav.sim_global_coord_frame_origin \
+            + offset \
+            - self.sim_global_coord_frame_origin
 
         # Adjust the z axis so the leading drone does not collide with the ground
         if lead_local_pos.z_val > self.min_z:

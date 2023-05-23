@@ -38,10 +38,10 @@ class Logger:
                  simulation_time_s: int,
                  camera_fps: int,
                  infer_freq_Hz: int,
-                 leadingUAV_update_vel_interval_s: int         
+                 leadingUAV_update_vel_interval_s: int
             ) -> None:
         dt = datetime.datetime.now()
-        
+
         self.egoUAV = egoUAV
         self.leadingUAV = leadingUAV
         self.sim_fps = sim_fps

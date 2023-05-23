@@ -49,7 +49,7 @@ def add_angle_info_to_image(image: torch.Tensor,
     # Convert image to PIL
     pil_img = F.to_pil_image(image)
     draw = ImageDraw.Draw(pil_img)
-    font = ImageFont.truetype("arial.ttf", 10)
+    font = ImageFont.load_default()
     # Add the text
     draw.text(getNextLinePos(),
               f"estim_angle: {estim_angle_deg:.2f}",

@@ -72,8 +72,8 @@ class GlobalConfig:
 
     # Data generation
     # Bounds for random distance between the two UAVs
-    min_dist = 3
-    max_dist = 15
+    min_dist = 1.5
+    max_dist = 3
     # Box to allow random movement of the egoUAV in
     rand_move_box_x = (-10, 10)
     rand_move_box_y = (-10, 10)

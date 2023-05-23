@@ -87,7 +87,7 @@ def tracking_at_frequency(sim_fps: int = 60,
 
                 # Perform the movement for the previous detection
                 if prev_bbox and prev_score and prev_score >= config.score_threshold:
-                    egoUAV.moveToBoundingBoxAsync(prev_bbox, time_interval=(0.5))
+                    egoUAV.moveToBoundingBoxAsync(prev_bbox, time_interval=(0.4))
                     print(f"UAV detected {prev_score}, moving towards it...")
                 else:
                     print("Lost tracking!!!")
@@ -121,6 +121,36 @@ def tracking_at_frequency(sim_fps: int = 60,
         client.reset()
 
 if __name__ == '__main__':
-    tracking_at_frequency(simulation_time_s=60, infer_freq_Hz=10)
-    gl = GraphLogs(pickle_file="recordings/2023512_145828/log.pkl")
-    gl.graph_distance(sim_fps=60)
+    # Generate data
+    from gendata import generate_training_data
+    generate_training_data(
+        csv_file="/home/airsim_user/UAV_Tracking/data/empty_map/train/empty_map_positions.csv",
+        root_dir="/home/airsim_user/UAV_Tracking/data/empty_map/train/",
+        num_samples=100
+    )
+
+    
+    # Train the NNs
+    # from nets.DetectionNets import Detection_SSD
+    # ssd = Detection_SSD(
+    #     root_train_dir="/home/airsim_user/UAV_Tracking/data/empty_map/train",
+    #     json_train_labels="/home/airsim_user/UAV_Tracking/data/empty_map/train/empty_map.json",
+    #     root_test_dir="/home/airsim_user/UAV_Tracking/data/empty_map/test",
+    #     json_test_labels="/home/airsim_user/UAV_Tracking/data/empty_map/test/empty_map.json"
+    # )
+    # torch.backends.cudnn.benchmark = True
+    # for i in range(0, 30)*10:
+    #     ssd.train(num_epochs=10)
+    #     ssd.save(f"nets/checkpoints/ssd{i+10-1}.checkpoint")
+
+    # Run the simulation
+    # tracking_at_frequency(simulation_time_s=60, infer_freq_Hz=30)
+
+    # Run inference frequency benchmark
+    # from nets.DetectionNets import Detection_SSD, Detection_FasterRCNN
+    # ssd = Detection_SSD(root_test_dir="/home/airsim_user/UAV_Tracking/data/empty_map/test",
+	# 		 json_test_labels="/home/airsim_user/UAV_Tracking/data/empty_map/test/empty_map.json")
+    # ssd.get_inference_frequency(num_tests=10, warmup=2, cudnn_benchmark=True)
+    # rcnn = Detection_FasterRCNN(root_test_dir="/home/airsim_user/UAV_Tracking/data/empty_map/test",
+    #        	                 json_test_labels="/home/airsim_user/UAV_Tracking/data/empty_map/test/empty_map.json")
+    # rcnn.get_inference_frequency(num_tests=10, warmup=2, cudnn_benchmark=True)

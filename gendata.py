@@ -41,8 +41,8 @@ def create_sample(
         egoUAV.simSetVehiclePose(ego_pose)
         
         _, offset = leadingUAV.sim_move_within_FOV(egoUAV, execute=False)
-        lead_pos = offset + ego_pos
-
+        lead_pos = offset + ego_pos - leadingUAV.sim_global_coord_frame_origin
+        
         # Reset the orientation of the egoUAV before making any further changes
         lead_pose = airsim.Pose(position_val=lead_pos, orientation_val=reset_quarernion)
         leadingUAV.simSetVehiclePose(lead_pose)

@@ -12,16 +12,28 @@ from GlobalConfig import GlobalConfig as config
 from models.BoundingBox import BoundingBox
 from nets.DetectionNets import Detection_FasterRCNN
 from nets.DetectionNets import Detection_SSD
+from controller.Controller import Controller
+from controller.KalmanFilter import KalmanFilter
 
 class EgoUAV(UAV):
-    def __init__(self, name: str, port: int = 41451, genmode: bool = False) -> None:
+    def __init__(self,
+                 name: str,
+                 controller_type: Literal["Simple", "KF"] = "Simple",
+                 port: int = 41451,
+                 genmode: bool = False
+            ) -> None:
         super().__init__(name, port, genmode=genmode)
         # Initialize the NN
-        if not genmode:
-            # self.net = Detection_FasterRCNN()
-            # self.net.load("nets/checkpoints/rcnn.checkpoint")
-            self.net = Detection_SSD()
-            self.net.load("nets/checkpoints/ssd.checkpoint")
+        if genmode:
+            return
+        # self.net = Detection_FasterRCNN()
+        # self.net.load("nets/checkpoints/rcnn.checkpoint")
+        self.net = Detection_SSD()
+        self.net.load("nets/checkpoints/ssd300.checkpoint")
+        if controller_type == "Simple":
+            self.controller = Controller()
+        elif controller_type == "KF":
+            self.controller = KalmanFilter(np.array([3.5, 0, 0]), np.zeros([6, 6]), np.zeros([6, 6]), np.zeros([6, 6]))
 
     def _getImage(self, view_mode: bool = False) -> torch.Tensor:
         """
@@ -230,8 +242,8 @@ class EgoUAV(UAV):
         return self._get_yaw_angle(dist_x, dist_y)
 
     def moveToBoundingBoxAsync(self,
-                               bbox: BoundingBox,
-                               time_interval: float = 0.
+                               bbox: Optional[BoundingBox],
+                               dt: float
                             ) -> Future:
         """
         Given a BoundingBox object, calculate its relative distance
@@ -261,51 +273,51 @@ class EgoUAV(UAV):
         Note: moveToPositionAsync seems to work the best, the attempt was to
         make the EgoUAV movement smooth.
         """
-        offset = airsim.Vector3r()
-        # Calculate the distance (x axis) of the two UAV's, using the
-        # camera's focal length
-        offset.x_val = config.focal_length_x * config.pawn_size_y / bbox.width
-        offset.y_val = self._get_y_distance(offset.x_val, bbox, "focal")
-        offset.z_val = self._get_z_distance(offset.x_val, bbox, "focal")
+        if bbox:
+            offset = airsim.Vector3r()
+            # Calculate the distance (x axis) of the two UAV's, using the
+            # camera's focal length
+            offset.x_val = config.focal_length_x * config.pawn_size_y / bbox.width
+            offset.y_val = self._get_y_distance(offset.x_val, bbox, "focal")
+            offset.z_val = self._get_z_distance(offset.x_val, bbox, "focal")
 
-        # Calculate the new position on EgoUAV's coordinate system to move at.
-        # Calculate the yaw_mode so EgoUAV's camera points directly to the LeadingUAV
-        yaw_deg = self._get_yaw_angle(offset.x_val, offset.y_val)
-        yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=yaw_deg)
-
-        # Now that you used trigonometry to get the distance on the y and z axis
-        # you should fix the offset on the x axis, since the current one is the
-        # distance between the camera and the back side of the leadingUAV, but
-        # you need to calculate the distance between the centers of the two UAVs.
-        offset.x_val += config.camera_offset_x + config.pawn_size_x/2
-        
-        if time_interval:
-            # It is important to preserve the LeadingUAV in our FOV.
-            weighted_offset = airsim.Vector3r(offset.x_val*config.weight_vel_x,
-                                              offset.y_val*config.weight_vel_y,
-                                              offset.z_val*config.weight_vel_z,
-                                        )
-            # Normalize the weighted offset
-            len_w_offset = math.sqrt(weighted_offset.x_val**2 + weighted_offset.y_val**2 + weighted_offset.z_val**2)
-            normal_w_offset = weighted_offset / len_w_offset
-            # Multiply with the magnitude of the target velocity
-            velocity = normal_w_offset * (config.uav_velocity)
-            # Make sure the target velocity does have the expected magnitude
-            assert(config.uav_velocity - math.sqrt(velocity.x_val**2 + velocity.y_val**2 + velocity.z_val**2) < config.eps)
-
-            print(f"EgoUAV moving by local coord frame velocity: {velocity.x_val, velocity.y_val, velocity.z_val}")
-            self.moveFrontFirstByVelocityAsync(velocity.x_val, velocity.y_val, velocity.z_val,
-                                               duration=time_interval,
-                                               yaw_deg=yaw_deg
-                                        )
+            # Now that you used trigonometry to get the distance on the y and z axis
+            # you should fix the offset on the x axis, since the current one is the
+            # distance between the camera and the back side of the leadingUAV, but
+            # you need to calculate the distance between the centers of the two UAVs.
+            offset.x_val += config.camera_offset_x + config.pawn_size_x/2
         else:
-            # Multiply by the weights
-            offset.x_val *= config.weight_pos_x
-            offset.y_val *= config.weight_pos_y
-            offset.z_val *= config.weight_pos_z
-            new_pos = self.getMultirotorState().kinematics_estimated.position + offset
-            self.lastAction = self.moveToPositionAsync(*new_pos,
-                                                       drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
-                                                       yaw_mode=yaw_mode
-                                                    )
+            offset = airsim.Vector3r(0, 0, 0)
+        
+        # Use the controller to extract the estimated state of the system
+        offset = offset.to_numpy_array()
+        measurement = np.expand_dims(np.pad(offset, (0, 3)), axis=1)
+        state = self.controller.step(measurement, dt=dt)
+        coffset, cvelocity = np.vsplit(state, 2)
+        coffset = coffset.squeeze(); cvelocity = cvelocity.squeeze()
+        
+        # Calculate the yaw_mode so EgoUAV's camera points directly to the LeadingUAV
+        # TODO: If you decide not to use the prediction of the offsets in order to predict
+        # the yaw angle aswell, you may move this to the first if-else of the function
+        if np.all(offset == np.zeros([3])):
+            # There is no bbox (i.e. measurement), thus we might only have a prediction,
+            # we choose to preserve the current yaw angle
+            yaw_deg = self.getPitchRollYaw()[2]
+        else:
+            # There is a bbox, use the state returned by the controller
+            # to estimate the yaw angle. Since we need the camera to be pointing to the
+            # back of the LeadingUAV, we subtract the distance between EgoUAV's center
+            # and the camera's position on the x axis as well as the LeadingUAV's center
+            # to it's back on the x axis.
+            yaw_deg = self._get_yaw_angle(coffset[0] - (config.camera_offset_x + config.pawn_size_x/2),
+                                          coffset[1]
+            )
+        
+        # Perform the movement
+        print(f"EgoUAV moving by local coord frame velocity: {cvelocity[0], cvelocity[1], cvelocity[2]}")
+        self.moveFrontFirstByVelocityAsync(cvelocity[0], cvelocity[1], cvelocity[2],
+                                           duration=dt,
+                                           yaw_deg=yaw_deg
+                                    )
+
         return self.lastAction

@@ -86,8 +86,8 @@ def tracking_at_frequency(sim_fps: int = 60,
                 bbox, score = egoUAV.net.eval(camera_frame)
 
                 # Perform the movement for the previous detection
-                if prev_bbox and prev_score and prev_score >= config.score_threshold:
-                    egoUAV.moveToBoundingBoxAsync(prev_bbox, time_interval=(0.4))
+                egoUAV.moveToBoundingBoxAsync(prev_bbox, dt=(1/infer_freq_Hz))
+                if prev_score and prev_score >= config.score_threshold:
                     print(f"UAV detected {prev_score}, moving towards it...")
                 else:
                     print("Lost tracking!!!")
@@ -122,13 +122,12 @@ def tracking_at_frequency(sim_fps: int = 60,
 
 if __name__ == '__main__':
     # Generate data
-    from gendata import generate_training_data
-    generate_training_data(
-        csv_file="/home/airsim_user/UAV_Tracking/data/empty_map/train/empty_map_positions.csv",
-        root_dir="/home/airsim_user/UAV_Tracking/data/empty_map/train/",
-        num_samples=100
-    )
-
+    # from gendata import generate_training_data
+    # generate_training_data(
+    #     csv_file="/home/airsim_user/UAV_Tracking/data/empty_map/train/empty_map_positions.csv",
+    #     root_dir="/home/airsim_user/UAV_Tracking/data/empty_map/train/",
+    #     num_samples=100
+    # )
     
     # Train the NNs
     # from nets.DetectionNets import Detection_SSD
@@ -144,7 +143,9 @@ if __name__ == '__main__':
     #     ssd.save(f"nets/checkpoints/ssd{i+10-1}.checkpoint")
 
     # Run the simulation
-    # tracking_at_frequency(simulation_time_s=60, infer_freq_Hz=30)
+    tracking_at_frequency(simulation_time_s=60, infer_freq_Hz=10)
+    # gl = GraphLogs(pickle_file="recordings/diogenis_ssd30_vel5/log.pkl")
+    # gl.graph_distance(sim_fps=60)
 
     # Run inference frequency benchmark
     # from nets.DetectionNets import Detection_SSD, Detection_FasterRCNN

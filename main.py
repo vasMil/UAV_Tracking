@@ -44,7 +44,7 @@ def tracking_at_frequency(sim_fps: int = 60,
 
     # Wait for the takeoff to complete
     leadingUAV = LeadingUAV("LeadingUAV")
-    egoUAV = EgoUAV("EgoUAV")
+    egoUAV = EgoUAV("EgoUAV", controller_type="KF")
     egoUAV.lastAction.join()
     leadingUAV.lastAction.join()
 
@@ -155,3 +155,18 @@ if __name__ == '__main__':
     # rcnn = Detection_FasterRCNN(root_test_dir="/home/airsim_user/UAV_Tracking/data/empty_map/test",
     #        	                 json_test_labels="/home/airsim_user/UAV_Tracking/data/empty_map/test/empty_map.json")
     # rcnn.get_inference_frequency(num_tests=10, warmup=2, cudnn_benchmark=True)
+
+    # Test the Kalman filter
+    # import numpy as np
+    # from controller.KalmanFilter import KalmanFilter
+    # X_init = np.zeros([6, 1]); X_init[0][0] = 3.5
+    # kf = KalmanFilter(X_init, np.zeros([6, 6]), np.zeros([6, 6]), np.zeros([3, 3]))
+    # print(kf.step(np.expand_dims(np.pad(np.array([4, 0, 0]), (0,3)), axis=1), dt=0.1))
+    # print(kf.step(np.expand_dims(np.pad(np.array([5, 0, 0]), (0,3)), axis=1), dt=0.2))
+    # print(kf.step(np.expand_dims(np.pad(np.array([5.6, 0, 0]), (0,3)), axis=1), dt=0.1))
+    # print(kf.step(np.expand_dims(np.pad(np.array([6.2, 0, 0]), (0,3)), axis=1), dt=0.1))
+    
+    # Test Kalman utility functions
+    # from utils.kalman_filter import estimate_process_noise, estimate_measurement_noise
+    # from nets.DetectionNets import Detection_SSD
+    # print(estimate_measurement_noise(network=Detection_SSD()))

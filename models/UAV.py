@@ -14,7 +14,7 @@ class UAV():
     - EgoUAV
     """
 
-    def __init__(self, name: str, port: int, genmode: bool = False) -> None:
+    def __init__(self, name: str, port: int = 41451, genmode: bool = False) -> None:
         self.name = name
         self.client = airsim.MultirotorClient(port=port)
         print(f"UAV {self.name} listens at port {port}")
@@ -69,6 +69,24 @@ class UAV():
                                                           vehicle_name=self.name)
         return self.lastAction
     
+    def moveFrontFirstToPositionAsync(self, x, y, z, yaw_deg: float = 0.) -> Future:
+        # Convert yaw_deg to radians in order to calculate cos and sin, using pyhton's math library
+        yaw_rad = math.radians(yaw_deg)
+        # Perform the rotation of the vector (vx, vy, vz) to the world coordinates
+        rot_mat = np.array([[math.cos(yaw_rad), -math.sin(yaw_rad), 0],
+                            [math.sin(yaw_rad),  math.cos(yaw_rad), 0],
+                            [0,                                  0, 1]
+                        ], dtype=np.float64)
+        local_pos = np.array([x, y, z], dtype=np.float64)
+        world_pos = np.matmul(rot_mat, local_pos)
+        # Construct the yaw_mode object
+        yaw_mode = airsim.YawMode(False, yaw_deg)
+        self.lastAction = self.moveToPositionAsync(*world_pos,
+                                                   drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
+                                                   yaw_mode=yaw_mode
+                                            )
+        return self.lastAction
+
     def moveByVelocityAsync(self, vx, vy, vz,
                             duration,
                             drivetrain: int = airsim.DrivetrainType.MaxDegreeOfFreedom,

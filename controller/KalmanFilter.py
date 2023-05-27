@@ -31,7 +31,7 @@ class KalmanFilter(Controller):
         self.X_curr = np.zeros([6, 1])  # Current state matrix (at time t)
         # self.P_curr = np.zeros([6, 1])  # Current process covariance matrix (at time t)
         self.X_pred = np.zeros([6, 1])  # Predicted state matrix (at time t)
-        self.P_pred = np.zeros([6, 1])  # Predicted process covariance matrix (at time t)
+        self.P_pred = np.zeros([6, 6])  # Predicted process covariance matrix (at time t)
 
     def step(self, X_meas: np.ndarray, dt: float) -> np.ndarray:
         """
@@ -53,12 +53,12 @@ class KalmanFilter(Controller):
         self.A = np.eye(6, 6) + np.eye(6, 6, 3)*dt
 
         # Predict the new state
-        self.X_pred = np.matmul(self.A, self.X_prev) + self.wt
+        self.X_pred = self.A @ self.X_prev + self.wt
         self.P_pred = self.A @ self.P_prev @ self.A.T + self.Q
         
         # Calculate the Kalman Gain
         self.K = self.P_pred @ self.H.T @ (self.H @ self.P_pred @ self.H.T + self.R)
-
+        print(f"X_pred: {self.X_pred}")
         # If there is no valid measurement, just perform the prediction step
         # else use the Kalman Gain to incorporate the measurement aswell.
         if np.any(X_meas != np.zeros([6, 1])):
@@ -74,5 +74,4 @@ class KalmanFilter(Controller):
         # assign t -> t-1 (curr variables to prev)
         self.P_prev = (np.eye(6, 6) - (self.K @ self.H)) @ self.P_pred
         self.X_prev = self.X_curr
-
-        return self.X_curr[3:6]
+        return self.X_curr

@@ -17,12 +17,11 @@ def create_sample(
         leadingUAV: LeadingUAV, 
     ) -> Tuple[torch.Tensor, airsim.Vector3r]:
     """
-    Given the two UAVs and their initial offset
-    return a tuple consisting of an image (torch.Tensor), which
-    is from the egoUAV's perspective and contains the leadingUAV.
-    The second element in the tuple should be another Tuple that contains
-    the relative offset of the leadingUAV with respect to the egoUAV's position.
-    This offset is the distance between the centers of the two UAVs.
+    Given two UAVs return a tuple consisting of an image (torch.Tensor) and the offset.
+    This iamge is egoUAV's perspective and contains the leadingUAV.
+    The second element of the tuple is the offset of the leadingUAV with respect to the
+    egoUAV's position.
+    (This offset is the distance between the centers of the two UAVs.)
     """
     reset_quarernion = airsim.to_quaternion(pitch=0, roll=0, yaw=0)
     while True:

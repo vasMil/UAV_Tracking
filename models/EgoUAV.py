@@ -33,7 +33,13 @@ class EgoUAV(UAV):
         if controller_type == "Simple":
             self.controller = Controller()
         elif controller_type == "KF":
-            self.controller = KalmanFilter(np.array([3.5, 0, 0]), np.zeros([6, 6]), np.zeros([6, 6]), np.zeros([6, 6]))
+            X_init = np.zeros([6, 1]); X_init[0][0] = 3.5
+            P_init = np.zeros([6, 6]); P_init[3][3] = 0.5; P_init[4][4] = 0.5; P_init[5][5] = 0.5
+            R = np.array([[7.9882659, 3.17199785, 1.58456132],
+                          [3.17199785, 15.04112204, 0.14100749],
+                          [1.58456132, 0.14100749, 3.98863264]]
+            )
+            self.controller = KalmanFilter(X_init, P_init, np.zeros([6, 6]), R)
 
     def _getImage(self, view_mode: bool = False) -> torch.Tensor:
         """
@@ -241,6 +247,21 @@ class EgoUAV(UAV):
         dist_y = self._get_y_distance(dist_x, bbox, "focal")
         return self._get_yaw_angle(dist_x, dist_y)
 
+    def get_distance_from_bbox(self, bbox: BoundingBox) -> np.ndarray:
+        """
+        Args:
+        bbox: The bbox predicted using a NN, on EgoUAV's image.
+
+        Returns:
+        A (3x1) column vector containing the estimated distance on the (x, y, z) axis.
+        """
+        dist = np.zeros([3,1])
+        x_offset = config.focal_length_x * config.pawn_size_y / bbox.width
+        dist[0] = x_offset
+        dist[1] = self._get_y_distance(x_offset, bbox, "focal")
+        dist[2] = self._get_z_distance(x_offset, bbox, "focal")
+        return dist
+
     def moveToBoundingBoxAsync(self,
                                bbox: Optional[BoundingBox],
                                dt: float
@@ -314,10 +335,10 @@ class EgoUAV(UAV):
             )
         
         # Perform the movement
-        print(f"EgoUAV moving by local coord frame velocity: {cvelocity[0], cvelocity[1], cvelocity[2]}")
-        self.moveFrontFirstByVelocityAsync(cvelocity[0], cvelocity[1], cvelocity[2],
-                                           duration=dt,
-                                           yaw_deg=yaw_deg
-                                    )
-
+        # print(f"EgoUAV moving by local coord frame velocity: {cvelocity[0], cvelocity[1], cvelocity[2]}")
+        # self.moveFrontFirstByVelocityAsync(cvelocity[0], cvelocity[1], cvelocity[2],
+        #                                    duration=dt,
+        #                                    yaw_deg=yaw_deg
+        #                             )
+        self.moveFrontFirstToPositionAsync(*coffset)
         return self.lastAction

@@ -189,7 +189,7 @@ class DetectionNetBench():
         will be printed and the scheduler will be removed
         (i.e. self.scheduler = None)
         """
-        checkpoint: Checkpoint_t = torch.load(checkpoint_path)
+        checkpoint: Checkpoint_t = torch.load(checkpoint_path, map_location=torch.device(self.device))
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.epoch = checkpoint["epoch"]
         self.losses = checkpoint["losses"]

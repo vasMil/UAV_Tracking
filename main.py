@@ -115,6 +115,9 @@ def tracking_at_frequency(sim_fps: int = 60,
         logger.write_setup()
         logger.dump_logs()
 
+        # Write the mp4 file
+        logger.write_video()
+
         client.simPause(False)
         egoUAV.disable()
         leadingUAV.disable()
@@ -128,7 +131,7 @@ if __name__ == '__main__':
     #     root_dir="/home/airsim_user/UAV_Tracking/data/empty_map/train/",
     #     num_samples=100
     # )
-    
+
     # Train the NNs
     # from nets.DetectionNets import Detection_SSD
     # ssd = Detection_SSD(
@@ -165,7 +168,7 @@ if __name__ == '__main__':
     # print(kf.step(np.expand_dims(np.pad(np.array([5, 0, 0]), (0,3)), axis=1), dt=0.2))
     # print(kf.step(np.expand_dims(np.pad(np.array([5.6, 0, 0]), (0,3)), axis=1), dt=0.1))
     # print(kf.step(np.expand_dims(np.pad(np.array([6.2, 0, 0]), (0,3)), axis=1), dt=0.1))
-    
+
     # Test Kalman utility functions
     # from utils.kalman_filter import estimate_process_noise, estimate_measurement_noise
     # from nets.DetectionNets import Detection_SSD

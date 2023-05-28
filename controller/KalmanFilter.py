@@ -74,4 +74,7 @@ class KalmanFilter(Controller):
         # assign t -> t-1 (curr variables to prev)
         self.P_prev = (np.eye(6, 6) - (self.K @ self.H)) @ self.P_pred
         self.X_prev = self.X_curr
-        return self.X_curr
+
+        # Convert the output state of the Kalman Filter to a velocity, which will be
+        # applied for dt seconds
+        return super().step(self.X_curr, dt)

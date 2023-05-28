@@ -26,10 +26,10 @@ class EgoUAV(UAV):
         # Initialize the NN
         if genmode:
             return
-        # self.net = Detection_FasterRCNN()
-        # self.net.load("nets/checkpoints/rcnn.checkpoint")
-        self.net = Detection_SSD()
-        self.net.load("nets/checkpoints/ssd300.checkpoint")
+        self.net = Detection_FasterRCNN()
+        self.net.load("nets/checkpoints/rcnn100.checkpoint")
+        # self.net = Detection_SSD()
+        # self.net.load("nets/checkpoints/ssd300.checkpoint")
         if controller_type == "Simple":
             self.controller = Controller()
         elif controller_type == "KF":
@@ -44,17 +44,17 @@ class EgoUAV(UAV):
     def _getImage(self, view_mode: bool = False) -> torch.Tensor:
         """
         Returns an RGB image as a tensor, of the EgoUAV.
-        
+
         If view_mode is False:
         - The tensor returned will be of type float and in shape CxHxW
         Else:
         - The tensor returned will be of type uint8 and in shape HxWxC
         """
-        # Respond is of type list[airsim.ImageResponse], 
+        # Respond is of type list[airsim.ImageResponse],
         # since the request is only for a single image,
         # I may extract only the first element of the list
         resp = self.client.simGetImages(
-                [airsim.ImageRequest(0, airsim.ImageType.Scene, False, False)], 
+                [airsim.ImageRequest(0, airsim.ImageType.Scene, False, False)],
                 vehicle_name=self.name
             )[0]
         # Convert the string to a 1D numpy array (dtype = uint8)
@@ -68,10 +68,10 @@ class EgoUAV(UAV):
         else:
             img = torch.from_numpy(img)
         return img
-    
+
     def _cheat_move(
-            self, 
-            position_vec: Optional[torch.Tensor] = None, 
+            self,
+            position_vec: Optional[torch.Tensor] = None,
             velocity_vec: Optional[torch.Tensor] = None
         ) -> Future:
         """
@@ -84,7 +84,7 @@ class EgoUAV(UAV):
         if ((position_vec is None and velocity_vec is None) or \
              (position_vec is not None and velocity_vec is not None)):
             raise Exception("EgoUAV::_cheat_move: Exactly one of two arguments should not be None")
-        
+
         if velocity_vec is not None:
             self.lastAction = self.moveByVelocityAsync(*(velocity_vec.tolist()), duration=config.move_duration)
         elif position_vec is not None:
@@ -102,7 +102,7 @@ class EgoUAV(UAV):
         The modes:
         - focal, it is proposed at https://github.com/microsoft/AirSim/issues/1907.
                  it uses the focal length of the camera in order to retrieve the distance
-        
+
         - mpp, stands for meters per pixel. I think it is logical to consider that if we devide the
                distance the image captures along the horizontal axis, in meters, with the width in pixels
                of the image, the result would be a number with units m/px. This may then be multiplied with
@@ -129,7 +129,7 @@ class EgoUAV(UAV):
             # by expected_width/2.
             # The same logic may be applied when the leadingUAV is on the right of egoUAV.
             expected_bbox_width_px = config.focal_length_x * config.pawn_size_x / x_distance
-            
+
             if bbox.x2 < config.img_width/2: # The leadingUAV is at the left of the egoUAV
                 bbox_fixed_center_y = bbox.x1 + expected_bbox_width_px/2
             elif bbox.x1 > config.img_width/2:
@@ -141,14 +141,14 @@ class EgoUAV(UAV):
         else:
             mode2 = mode
             y_box_displacement = bbox.x_center - config.img_width/2
-        
+
         if mode2 == "focal":
             return y_box_displacement * x_distance / config.focal_length_x
-        
+
         if mode2 == "mpp":
             img_width_meters = 2 * x_distance / math.tan((math.pi - config.horiz_fov)/2)
             return y_box_displacement * (img_width_meters / config.img_width)
-        
+
         raise ValueError("_get_z_distance: Invalid mode!")
 
     def _get_z_distance(self, x_distance: float, bbox: BoundingBox, mode: Literal["focal", "mpp", "fix_focal", "fix_mpp"]) -> float:
@@ -161,7 +161,7 @@ class EgoUAV(UAV):
         The modes:
         - focal, it is proposed at https://github.com/microsoft/AirSim/issues/1907.
                         it uses the focal length of the camera in order to retrieve the distance
-        
+
         - mpp, stands for meters per pixel. I think it is logical to consider that if we devide the
             distance the image captures along the vertical axis, in meters, with the height in pixels
             of the image, the result would be a number with units m/px. This may then be multiplied with
@@ -188,7 +188,7 @@ class EgoUAV(UAV):
             # by expected_height/2.
             # The same logic may be applied to cases aswell.
             expected_bbox_height_px = config.focal_length_y * config.pawn_size_z / x_distance
-            
+
             if bbox.y2 < config.img_height/2: # The leadingUAV is higher than the egoUAV
                 bbox_fixed_center_z = bbox.y1 + expected_bbox_height_px/2
             elif bbox.y1 > config.img_height/2:
@@ -200,16 +200,16 @@ class EgoUAV(UAV):
         else:
             mode2 = mode
             z_box_displacement = bbox.y_center - config.img_height/2
-        
+
         if mode2 == "focal":
             return z_box_displacement * x_distance / config.focal_length_y
-        
+
         if mode2 == "mpp":
             img_height_meters = 2 * x_distance / math.tan((math.pi - config.vert_fov)/2)
             return z_box_displacement * (img_height_meters / config.img_height)
-        
+
         raise ValueError("_get_z_distance: Invalid mode!")
-    
+
     def _get_yaw_angle(self, dist_x: float, dist_y: float) -> float:
         """
         Returns the angle at which the point given by dist_x and dist_y is located.
@@ -229,7 +229,7 @@ class EgoUAV(UAV):
         The yaw angle for the EgoUAV, in the global (world) coordinate frame. 
         """
         return math.degrees(math.atan(dist_y/dist_x)) + self.getPitchRollYaw()[2]
-    
+
     def get_yaw_angle_from_bbox(self, bbox: BoundingBox):
         """
         Wraps self._get_yaw_angle() into a function that will also derive the distances
@@ -309,14 +309,14 @@ class EgoUAV(UAV):
             offset.x_val += config.camera_offset_x + config.pawn_size_x/2
         else:
             offset = airsim.Vector3r(0, 0, 0)
-        
+
         # Use the controller to extract the estimated state of the system
         offset = offset.to_numpy_array()
         measurement = np.expand_dims(np.pad(offset, (0, 3)), axis=1)
         state = self.controller.step(measurement, dt=dt)
         coffset, cvelocity = np.vsplit(state, 2)
         coffset = coffset.squeeze(); cvelocity = cvelocity.squeeze()
-        
+
         # Calculate the yaw_mode so EgoUAV's camera points directly to the LeadingUAV
         # TODO: If you decide not to use the prediction of the offsets in order to predict
         # the yaw angle aswell, you may move this to the first if-else of the function
@@ -333,12 +333,11 @@ class EgoUAV(UAV):
             yaw_deg = self._get_yaw_angle(coffset[0] - (config.camera_offset_x + config.pawn_size_x/2),
                                           coffset[1]
             )
-        
+
         # Perform the movement
-        # print(f"EgoUAV moving by local coord frame velocity: {cvelocity[0], cvelocity[1], cvelocity[2]}")
-        # self.moveFrontFirstByVelocityAsync(cvelocity[0], cvelocity[1], cvelocity[2],
-        #                                    duration=dt,
-        #                                    yaw_deg=yaw_deg
-        #                             )
-        self.moveFrontFirstToPositionAsync(*coffset)
+        print(f"EgoUAV moving by local coord frame velocity: {cvelocity[0], cvelocity[1], cvelocity[2]}")
+        self.lastAction = self.moveFrontFirstByVelocityAsync(cvelocity[0], cvelocity[1], cvelocity[2],
+                                                             duration=dt,
+                                                             yaw_deg=yaw_deg
+                                                        )
         return self.lastAction

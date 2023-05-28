@@ -31,7 +31,8 @@ class Controller():
             fixed_measurement = np.multiply(measurement, np.array(
                 [[config.weight_vel_x], [config.weight_vel_y], [config.weight_vel_z]]
             ))
-        
+            fixed_measurement = measurement
+
         # Normalize the weighted offset
         meas_magn = np.linalg.norm(fixed_measurement)
         if meas_magn != 0:
@@ -41,7 +42,7 @@ class Controller():
             assert(config.uav_velocity - np.linalg.norm(velocity) < config.eps)
         else:
             velocity = np.zeros([3, 1])
-        
+
         self.prev_vel = velocity
         return np.vstack([measurement, velocity])
-    
+

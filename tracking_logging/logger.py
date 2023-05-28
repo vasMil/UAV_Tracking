@@ -7,6 +7,7 @@ import torch
 from torchvision.utils import save_image
 import pickle
 import matplotlib.pyplot as plt
+import cv2
 
 from models.EgoUAV import EgoUAV
 from models.LeadingUAV import LeadingUAV
@@ -54,6 +55,7 @@ class Logger:
         self.images_path = f"{self.parent_folder}/images"
         self.logfile = f"{self.parent_folder}/log.pkl"
         self.setup_file = f"{self.parent_folder}/setup.txt"
+        self.video_path = f"{self.parent_folder}/output.mp4"
         os.makedirs(self.images_path)
         self.info_per_frame: List[FrameInfo] = []
         self.frame_cnt: int = 0
@@ -125,6 +127,25 @@ class Logger:
         with open(self.logfile, 'wb') as f:
             pickle.dump(self.info_per_frame, f)
 
+    def write_video(self):
+        # Load images into a list
+        files = os.listdir(self.images_path)
+        files.sort()
+        # Use cv2's video writer
+        fourcc = cv2.VideoWriter_fourcc(*'MP4V')
+        video = cv2.VideoWriter(self.video_path,
+                                fourcc,
+                                self.camera_fps,
+                                (config.img_width, config.img_height)
+                )
+    
+        # Appending the images to the video one by one
+        for imgf in files: 
+            video.write(cv2.imread(os.path.join(self.images_path, imgf))) 
+        
+        # Save the video to the video path
+        video.release()
+        cv2.destroyAllWindows()
 
 class GraphLogs:
     def __init__(self,

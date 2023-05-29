@@ -2,14 +2,13 @@ import numpy as np
 
 from controller.Controller import Controller
 
-class KalmanFilter(Controller):
+class KalmanFilter():
     def __init__(self,
                  X_init: np.ndarray,
                  P_init: np.ndarray,
                  Q: np.ndarray,
                  R: np.ndarray
             ) -> None:
-        super().__init__()
         # Time constant variables
         self.Q = Q
         self.R = R
@@ -58,7 +57,7 @@ class KalmanFilter(Controller):
         
         # Calculate the Kalman Gain
         self.K = self.P_pred @ self.H.T @ (self.H @ self.P_pred @ self.H.T + self.R)
-        print(f"X_pred: {self.X_pred}")
+
         # If there is no valid measurement, just perform the prediction step
         # else use the Kalman Gain to incorporate the measurement aswell.
         if np.any(X_meas != np.zeros([6, 1])):
@@ -77,4 +76,4 @@ class KalmanFilter(Controller):
 
         # Convert the output state of the Kalman Filter to a velocity, which will be
         # applied for dt seconds
-        return super().step(self.X_curr, dt)
+        return self.X_curr

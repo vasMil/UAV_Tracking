@@ -68,24 +68,6 @@ class UAV():
                                                           yaw_mode=yaw_mode,
                                                           vehicle_name=self.name)
         return self.lastAction
-    
-    def moveFrontFirstToPositionAsync(self, x, y, z, yaw_deg: float = 0.) -> Future:
-        # Convert yaw_deg to radians in order to calculate cos and sin, using pyhton's math library
-        yaw_rad = math.radians(yaw_deg)
-        # Perform the rotation of the vector (vx, vy, vz) to the world coordinates
-        rot_mat = np.array([[math.cos(yaw_rad), -math.sin(yaw_rad), 0],
-                            [math.sin(yaw_rad),  math.cos(yaw_rad), 0],
-                            [0,                                  0, 1]
-                        ], dtype=np.float64)
-        local_pos = np.array([x, y, z], dtype=np.float64)
-        world_pos = np.matmul(rot_mat, local_pos)
-        # Construct the yaw_mode object
-        yaw_mode = airsim.YawMode(False, yaw_deg)
-        self.lastAction = self.moveToPositionAsync(*world_pos,
-                                                   drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
-                                                   yaw_mode=yaw_mode
-                                            )
-        return self.lastAction
 
     def moveByVelocityAsync(self, vx, vy, vz,
                             duration,
@@ -114,27 +96,30 @@ class UAV():
         """
         Uses the AirSim API to move this UAV at a constant velocity (vx, vy, vz),
         for duration, while taking into account the current yaw rotation of the vehicle.
-        This way you may move front-first towards a direction. This direction is in local
-        coordinates.
-        That is that the x axis extends towards where the front of the UAV is pointing at.
+        This way you may move front-first towards a direction. This direction is in camera
+        coordinates, which may change during simulation.
+        That is, the x axis extends towards where the front of the UAV is pointing at.
         The other two axes are perpendicular to this.
 
         This issue: https://github.com/microsoft/AirSim/issues/688
         Suggests you use airsim.DrivetrainType.ForwardOnly and setting yaw_mode
-        to YawMode(False, 0). This would be useful if 
+        to YawMode(False, 0).
+        TODO: Test it again and make sure that due to the small dt, AirSim is not
+        able to do all this. Note it here.
         """
         # Convert yaw_deg to radians in order to calculate cos and sin, using pyhton's math library
         yaw_rad = math.radians(yaw_deg)
-        # Perform the rotation of the vector (vx, vy, vz) to the world coordinates
+        # Perform the rotation of the vector (vx, vy, vz) to the EgoUAV's coordinate frame
+        # (i.e. The one that is defined by the orientation of the vehicle, when spawned)
         rot_mat = np.array([[math.cos(yaw_rad), -math.sin(yaw_rad), 0],
                             [math.sin(yaw_rad),  math.cos(yaw_rad), 0],
                             [0,                                  0, 1]
                         ], dtype=np.float64)
-        local_vel = np.array([vx, vy, vz], dtype=np.float64)
-        world_vel = np.matmul(rot_mat, local_vel)
+        local_vel = np.array([[vx], [vy], [vz]], dtype=np.float64)
+        world_vel = rot_mat @ local_vel
         # Construct the yaw_mode object
         yaw_mode = airsim.YawMode(False, yaw_deg)
-        self.lastAction = self.moveByVelocityAsync(*world_vel,
+        self.lastAction = self.moveByVelocityAsync(*(world_vel.squeeze()),
                                                    duration=duration,
                                                    drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
                                                    yaw_mode=yaw_mode

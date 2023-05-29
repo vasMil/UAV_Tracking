@@ -18,7 +18,7 @@ from controller.KalmanFilter import KalmanFilter
 class EgoUAV(UAV):
     def __init__(self,
                  name: str,
-                 controller_type: Literal["Simple", "KF"] = "Simple",
+                 filter: Literal["None", "KF"] = "None",
                  port: int = 41451,
                  genmode: bool = False
             ) -> None:
@@ -26,20 +26,21 @@ class EgoUAV(UAV):
         # Initialize the NN
         if genmode:
             return
-        self.net = Detection_FasterRCNN()
-        self.net.load("nets/checkpoints/rcnn100.checkpoint")
-        # self.net = Detection_SSD()
-        # self.net.load("nets/checkpoints/ssd300.checkpoint")
-        if controller_type == "Simple":
-            self.controller = Controller()
-        elif controller_type == "KF":
+        # self.net = Detection_FasterRCNN()
+        # self.net.load("nets/checkpoints/rcnn100.checkpoint")
+        self.net = Detection_SSD()
+        self.net.load("nets/checkpoints/ssd300.checkpoint")
+        self.controller = Controller(self)
+        if filter == "None":
+            self.filter = None
+        elif filter == "KF":
             X_init = np.zeros([6, 1]); X_init[0][0] = 3.5
-            P_init = np.zeros([6, 6]); P_init[3][3] = 0.5; P_init[4][4] = 0.5; P_init[5][5] = 0.5
+            P_init = np.zeros([6, 6]); P_init[3][3] = 4; P_init[4][4] = 5; P_init[5][5] = 3
             R = np.array([[7.9882659, 3.17199785, 1.58456132],
                           [3.17199785, 15.04112204, 0.14100749],
                           [1.58456132, 0.14100749, 3.98863264]]
             )
-            self.controller = KalmanFilter(X_init, P_init, np.zeros([6, 6]), R)
+            self.filter = KalmanFilter(X_init, P_init, np.zeros([6, 6]), R)
 
     def _getImage(self, view_mode: bool = False) -> torch.Tensor:
         """
@@ -217,20 +218,32 @@ class EgoUAV(UAV):
         Where z0 can be thought of as the position on the z axis of the EgoUAV.
         (In reality it may be any plane, since we just project the 3D points to the 2D space, by just ignoring
         the value on the z axis).
-        It is also important to note that the other two axis are defined by the world frame, that is x and y are
-        the world defined axis. BUT the point provided by dist_x and dist_y is on EgoUAV's coordinate frame
-        (i.e. the orientation of the EgoUAV defines the x and y axis)
+        It is also important to note that the other two axis are identical with EgoUAV's coordinate frame.
+        This coordinate frame is defined by the orientation of the EgoUAV, when spawned in the map.
+        On the other hand, the point provided by dist_x and dist_y is on the coordinate frame defined by EgoUAV's
+        camera orientation, during the simulation.
 
         Args:
-        dist_x: The distance of the point on the x axis (the x axis is defined in EgoUAV coordinate frame)
-        dist_y: The distance of the point on the y axis (the y axis is defined in EgoUAV coordinate frame)
+        dist_x: The distance of the point on the x axis (the x axis is defined in EgoUAV's camera coordinate frame)
+        dist_y: The distance of the point on the y axis (the y axis is defined in EgoUAV's camera coordinate frame)
 
         Returns:
-        The yaw angle for the EgoUAV, in the global (world) coordinate frame. 
+        The yaw angle for the EgoUAV, in the EgoUAV's coordinate frame.
+
+        Note: We introduce a bit of confusion by using two different coordinate frames in this function.
+        We could just provide dist_x and dist_y in EgoUAV's coordinate frame aswell and ignore the fact that
+        during simulation EgoUAV's camera defines a different coordinate system. This way the caller of the
+        function would only have to project the point found in the image (and is currently in the camera's
+        coordinate frame) onto EgoUAV's coordinate frame and thus we would have less things to worry about.
+        In this scenario, the output of this function would only be math.degrees(math.atan(dist_y/dist_x)).
+        The problem with this approach is that if the EgoUAV is already at x degrees and we require it to rotate,
+        at some y, the UAV may decide to rotate left by 360 + y degrees, instead of rotating y degrees to the
+        opposite direction.
+        This is fixed by our approach
         """
         return math.degrees(math.atan(dist_y/dist_x)) + self.getPitchRollYaw()[2]
 
-    def get_yaw_angle_from_bbox(self, bbox: BoundingBox):
+    def get_yaw_angle_from_bbox(self, bbox: Optional[BoundingBox]) -> float:
         """
         Wraps self._get_yaw_angle() into a function that will also derive the distances
         required by this method in order to calculate the yaw angle.
@@ -241,25 +254,56 @@ class EgoUAV(UAV):
         which we will derive the distance.
 
         Returns:
-        The yaw angle for the EgoUAV, in the global (world) coordinate frame.
+        The yaw angle for the EgoUAV, in it's coordinate frame.
+        Note that this might be different than the coordinate frame defined by the
+        orientation of the camera.
         """
+        if not bbox:
+            return self.getPitchRollYaw()[2]
         dist_x = config.focal_length_x * config.pawn_size_y / bbox.width
         dist_y = self._get_y_distance(dist_x, bbox, "focal")
         return self._get_yaw_angle(dist_x, dist_y)
 
-    def get_distance_from_bbox(self, bbox: BoundingBox) -> np.ndarray:
+    def get_distance_from_bbox(self, bbox: Optional[BoundingBox]) -> np.ndarray:
         """
         Args:
-        bbox: The bbox predicted using a NN, on EgoUAV's image.
+        bbox: The bbox predicted using a NN, on EgoUAV's image, or None.
 
         Returns:
-        A (3x1) column vector containing the estimated distance on the (x, y, z) axis.
+        A (3x1) column vector containing the estimated distance on the (x, y, z) axis,
+        between the EgoUAV and the target.
+        The EgoUAV's camera may not always point to the x axis of EgoUAV's coordinate
+        frame (this coordinate frame is defined by the orientation at which the EgoUAV
+        is spawned). Since we want the true distance between the EgoUAV and the target,
+        we project the distances extracted from the bbox, to EgoUAV's coordinate frame.
+        If the bbox is None, all values will be zero.
         """
         dist = np.zeros([3,1])
+        if not bbox:
+            return dist
         x_offset = config.focal_length_x * config.pawn_size_y / bbox.width
         dist[0] = x_offset
         dist[1] = self._get_y_distance(x_offset, bbox, "focal")
         dist[2] = self._get_z_distance(x_offset, bbox, "focal")
+
+        # The distance on the x axis so far, is from EgoUAV's camera,
+        # to the back side of the LeadingUAV. We require this distance to be
+        # from one center to the other.
+        dist[0] -= (config.camera_offset_x + config.pawn_size_x/2)
+
+        # Rotate distance vector to EgoUAV's frame.
+        # Currently, the bbox is inside a camera frame, but the camera
+        # may not be pointing to the true x axis of EgoUAV's coordinate frame.
+        yaw_rad = math.radians(self.getPitchRollYaw()[2])
+        # I want to rotate back to the original coordinate frame, thus I want
+        # the yaw of the UAV to be 0. I may achieve this by rotating back yaw_deg
+        # degrees. That is: I want to rotate by -yaw_deg.
+        yaw_rad *= -1
+        rot_mat = np.array([[math.cos(yaw_rad), -math.sin(yaw_rad), 0],
+                            [math.sin(yaw_rad),  math.cos(yaw_rad), 0],
+                            [0,                                  0, 1]
+                        ], dtype=np.float64)
+        dist = rot_mat @ dist
         return dist
 
     def moveToBoundingBoxAsync(self,
@@ -294,50 +338,21 @@ class EgoUAV(UAV):
         Note: moveToPositionAsync seems to work the best, the attempt was to
         make the EgoUAV movement smooth.
         """
-        if bbox:
-            offset = airsim.Vector3r()
-            # Calculate the distance (x axis) of the two UAV's, using the
-            # camera's focal length
-            offset.x_val = config.focal_length_x * config.pawn_size_y / bbox.width
-            offset.y_val = self._get_y_distance(offset.x_val, bbox, "focal")
-            offset.z_val = self._get_z_distance(offset.x_val, bbox, "focal")
+        distance = self.get_distance_from_bbox(bbox)
+        yaw_deg = self.get_yaw_angle_from_bbox(bbox)
+        
+        # Use a filter to predict LeadingUAV's movement, and/or smooth the
+        # measurements that have both process and measurement noise.
+        measurement = np.pad(distance, ((0, 3),(0, 0)))
+        if self.filter:
+            ego_estimated_pos = np.expand_dims(self.getMultirotorState().kinematics_estimated.position.to_numpy_array(), axis=1)
+            measurement[0:3, :] += ego_estimated_pos
+            measurement = self.filter.step(measurement, dt)
+            measurement[0:3, :] -= ego_estimated_pos
 
-            # Now that you used trigonometry to get the distance on the y and z axis
-            # you should fix the offset on the x axis, since the current one is the
-            # distance between the camera and the back side of the leadingUAV, but
-            # you need to calculate the distance between the centers of the two UAVs.
-            offset.x_val += config.camera_offset_x + config.pawn_size_x/2
-        else:
-            offset = airsim.Vector3r(0, 0, 0)
-
-        # Use the controller to extract the estimated state of the system
-        offset = offset.to_numpy_array()
-        measurement = np.expand_dims(np.pad(offset, (0, 3)), axis=1)
-        state = self.controller.step(measurement, dt=dt)
-        coffset, cvelocity = np.vsplit(state, 2)
-        coffset = coffset.squeeze(); cvelocity = cvelocity.squeeze()
-
-        # Calculate the yaw_mode so EgoUAV's camera points directly to the LeadingUAV
-        # TODO: If you decide not to use the prediction of the offsets in order to predict
-        # the yaw angle aswell, you may move this to the first if-else of the function
-        if np.all(offset == np.zeros([3])):
-            # There is no bbox (i.e. measurement), thus we might only have a prediction,
-            # we choose to preserve the current yaw angle
-            yaw_deg = self.getPitchRollYaw()[2]
-        else:
-            # There is a bbox, use the state returned by the controller
-            # to estimate the yaw angle. Since we need the camera to be pointing to the
-            # back of the LeadingUAV, we subtract the distance between EgoUAV's center
-            # and the camera's position on the x axis as well as the LeadingUAV's center
-            # to it's back on the x axis.
-            yaw_deg = self._get_yaw_angle(coffset[0] - (config.camera_offset_x + config.pawn_size_x/2),
-                                          coffset[1]
-            )
-
-        # Perform the movement
-        print(f"EgoUAV moving by local coord frame velocity: {cvelocity[0], cvelocity[1], cvelocity[2]}")
-        self.lastAction = self.moveFrontFirstByVelocityAsync(cvelocity[0], cvelocity[1], cvelocity[2],
-                                                             duration=dt,
-                                                             yaw_deg=yaw_deg
-                                                        )
+        # Use the controller to extract the target velocity, that
+        # will help us reach the estimated point, on which the LeadingUAV
+        # is at.
+        velocity = self.controller.step(measurement[0:3,:], dt=dt)
+        self.lastAction = self.moveFrontFirstByVelocityAsync(*(velocity.squeeze()), duration=dt, yaw_deg=yaw_deg)
         return self.lastAction

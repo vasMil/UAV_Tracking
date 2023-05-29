@@ -1,48 +1,49 @@
 import numpy as np
 
 from GlobalConfig import GlobalConfig as config
+from models.UAV import UAV
 
 class Controller():
-    def __init__(self) -> None:
+    def __init__(self, uav: UAV) -> None:
+        self.uav = uav
         self.prev_vel = np.zeros([3, 1])
 
-    def step(self, X_meas: np.ndarray, dt: float) -> np.ndarray:
+    def step(self, offset: np.ndarray, dt: float) -> np.ndarray:
         """
+        Calculates a velocity, using the target velocity found in config and
+        the offset from the target position passed as argument.
+
         Args:
-        X_meas: A 6x1 column vector with the current measured state of the system.
-        dt: The time interval between two consecutive step calls.
-
-        Returns:
-        A 6x1 column vector with the controller's target position and velocity.
+        offset: A 3x1 column vector with the offset from EgoUAV to LeadingUAV.
+        dt: The time interval between two consecutive calls.
         """
-        # Keep only first 3 elements od the state measurement
-        # since these are the position offsets.
-        measurement = X_meas[0:3]
 
-        if np.all(measurement == np.zeros([3, 1])):
-            # Using the previous estimation for the velocity "predict"
+        # Check if the offset is zeros and if it is,
+        # use prev_vel to predict the position of the LeadingUAV
+        if np.all(offset == np.zeros([3, 1])):
+            # Using the previous estimation for the velocity, "predict"
             # the expected position of the leadingUAV.
-            measurement = self.prev_vel * dt
-            fixed_measurement = measurement
+            fixed_offset = np.multiply(self.prev_vel, dt)
         else:
             # It is important to preserve the LeadingUAV in our FOV.
             # Thus you do an element-wise multiplication with the weights,
             # in order to favour moving on the z axis.
-            fixed_measurement = np.multiply(measurement, np.array(
+            fixed_offset = np.multiply(offset, np.array(
                 [[config.weight_vel_x], [config.weight_vel_y], [config.weight_vel_z]]
             ))
-            fixed_measurement = measurement
-
-        # Normalize the weighted offset
-        meas_magn = np.linalg.norm(fixed_measurement)
-        if meas_magn != 0:
-            fixed_measurement /= meas_magn
+        
+        # This if statement handles the edge case, where we have no prior estimation
+        # for the velocity and there was no bbox found
+        # (i.e. the offset is 0 in all 3 axis)
+        if np.linalg.norm(fixed_offset) != 0:
+            # Normalize the weighted offset (fixed_offset)
+            fixed_offset /= np.linalg.norm(fixed_offset)
             # Multiply with the magnitude of the target velocity
-            velocity = fixed_measurement * config.uav_velocity
+            velocity = np.multiply(fixed_offset, config.uav_velocity)
+            # Check if the calculated velocity has the desired magnitude (specified in config)
             assert(config.uav_velocity - np.linalg.norm(velocity) < config.eps)
         else:
             velocity = np.zeros([3, 1])
-
+        
         self.prev_vel = velocity
-        return np.vstack([measurement, velocity])
-
+        return velocity

@@ -44,7 +44,7 @@ def tracking_at_frequency(sim_fps: int = 60,
 
     # Wait for the takeoff to complete
     leadingUAV = LeadingUAV("LeadingUAV")
-    egoUAV = EgoUAV("EgoUAV", controller_type="KF")
+    egoUAV = EgoUAV("EgoUAV", filter="None")
     egoUAV.lastAction.join()
     leadingUAV.lastAction.join()
 
@@ -131,7 +131,7 @@ if __name__ == '__main__':
     #     root_dir="/home/airsim_user/UAV_Tracking/data/empty_map/train/",
     #     num_samples=100
     # )
-
+    
     # Train the NNs
     # from nets.DetectionNets import Detection_SSD
     # ssd = Detection_SSD(
@@ -146,7 +146,7 @@ if __name__ == '__main__':
     #     ssd.save(f"nets/checkpoints/ssd{i+10-1}.checkpoint")
 
     # Run the simulation
-    tracking_at_frequency(simulation_time_s=60, infer_freq_Hz=10)
+    tracking_at_frequency(simulation_time_s=20, infer_freq_Hz=10)
     # gl = GraphLogs(pickle_file="recordings/diogenis_ssd30_vel5/log.pkl")
     # gl.graph_distance(sim_fps=60)
 
@@ -155,8 +155,12 @@ if __name__ == '__main__':
     # ssd = Detection_SSD(root_test_dir="/home/airsim_user/UAV_Tracking/data/empty_map/test",
 	# 		 json_test_labels="/home/airsim_user/UAV_Tracking/data/empty_map/test/empty_map.json")
     # ssd.get_inference_frequency(num_tests=10, warmup=2, cudnn_benchmark=True)
+    # ssd.load("nets/checkpoints/ssd300.checkpoint")
+    # ssd.plot_losses()
     # rcnn = Detection_FasterRCNN(root_test_dir="/home/airsim_user/UAV_Tracking/data/empty_map/test",
     #        	                 json_test_labels="/home/airsim_user/UAV_Tracking/data/empty_map/test/empty_map.json")
+    # rcnn.load("nets/checkpoints/rcnn100.checkpoint")
+    # rcnn.plot_losses()
     # rcnn.get_inference_frequency(num_tests=10, warmup=2, cudnn_benchmark=True)
 
     # Test the Kalman filter
@@ -168,8 +172,11 @@ if __name__ == '__main__':
     # print(kf.step(np.expand_dims(np.pad(np.array([5, 0, 0]), (0,3)), axis=1), dt=0.2))
     # print(kf.step(np.expand_dims(np.pad(np.array([5.6, 0, 0]), (0,3)), axis=1), dt=0.1))
     # print(kf.step(np.expand_dims(np.pad(np.array([6.2, 0, 0]), (0,3)), axis=1), dt=0.1))
-
+    
     # Test Kalman utility functions
+    # from utils.kalman_filter import estimate_process_noise, estimate_measurement_noise
+    # from nets.DetectionNets import Detection_SSD
+    # print(estimate_measurement_noise(network=Detection_SSD()))
     # from utils.kalman_filter import estimate_process_noise, estimate_measurement_noise
     # from nets.DetectionNets import Detection_SSD
     # print(estimate_measurement_noise(network=Detection_SSD()))

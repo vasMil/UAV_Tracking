@@ -41,7 +41,8 @@ def tracking_at_frequency(sim_fps: int = 60,
     client = airsim.MultirotorClient()
     client.confirmConnection()
     print(f"Vehicle List: {client.listVehicles()}\n")
-
+    # Reset the position of the UAVs (just to make sure)
+    client.reset()
     # Wait for the takeoff to complete
     leadingUAV = LeadingUAV("LeadingUAV")
     egoUAV = EgoUAV("EgoUAV", filter="None")
@@ -75,7 +76,7 @@ def tracking_at_frequency(sim_fps: int = 60,
             # Update the leadingUAV velocity every update_vel_s*sim_fps frames
             if frame_idx % (leadingUAV_update_vel_interval_s*sim_fps) == 0:
                 leadingUAV.random_move(leadingUAV_update_vel_interval_s)
-            
+
             # Get a bounding box and move towards the previous detection
             # this way we also simulate the delay between the capture of the frame
             # and the output of the NN for this frame.
@@ -131,7 +132,7 @@ if __name__ == '__main__':
     #     root_dir="/home/airsim_user/UAV_Tracking/data/empty_map/train/",
     #     num_samples=100
     # )
-    
+
     # Train the NNs
     # from nets.DetectionNets import Detection_SSD
     # ssd = Detection_SSD(
@@ -146,14 +147,14 @@ if __name__ == '__main__':
     #     ssd.save(f"nets/checkpoints/ssd{i+10-1}.checkpoint")
 
     # Run the simulation
-    tracking_at_frequency(simulation_time_s=20, infer_freq_Hz=10)
+    tracking_at_frequency(simulation_time_s=60, infer_freq_Hz=10)
     # gl = GraphLogs(pickle_file="recordings/diogenis_ssd30_vel5/log.pkl")
     # gl.graph_distance(sim_fps=60)
 
     # Run inference frequency benchmark
     # from nets.DetectionNets import Detection_SSD, Detection_FasterRCNN
     # ssd = Detection_SSD(root_test_dir="/home/airsim_user/UAV_Tracking/data/empty_map/test",
-	# 		 json_test_labels="/home/airsim_user/UAV_Tracking/data/empty_map/test/empty_map.json")
+    # 		          json_test_labels="/home/airsim_user/UAV_Tracking/data/empty_map/test/empty_map.json")
     # ssd.get_inference_frequency(num_tests=10, warmup=2, cudnn_benchmark=True)
     # ssd.load("nets/checkpoints/ssd300.checkpoint")
     # ssd.plot_losses()
@@ -172,7 +173,7 @@ if __name__ == '__main__':
     # print(kf.step(np.expand_dims(np.pad(np.array([5, 0, 0]), (0,3)), axis=1), dt=0.2))
     # print(kf.step(np.expand_dims(np.pad(np.array([5.6, 0, 0]), (0,3)), axis=1), dt=0.1))
     # print(kf.step(np.expand_dims(np.pad(np.array([6.2, 0, 0]), (0,3)), axis=1), dt=0.1))
-    
+
     # Test Kalman utility functions
     # from utils.kalman_filter import estimate_process_noise, estimate_measurement_noise
     # from nets.DetectionNets import Detection_SSD

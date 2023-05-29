@@ -239,7 +239,7 @@ class EgoUAV(UAV):
         The problem with this approach is that if the EgoUAV is already at x degrees and we require it to rotate,
         at some y, the UAV may decide to rotate left by 360 + y degrees, instead of rotating y degrees to the
         opposite direction.
-        This is fixed by our approach
+        This is fixed in our approach.
         """
         return math.degrees(math.atan(dist_y/dist_x)) + self.getPitchRollYaw()[2]
 
@@ -272,10 +272,6 @@ class EgoUAV(UAV):
         Returns:
         A (3x1) column vector containing the estimated distance on the (x, y, z) axis,
         between the EgoUAV and the target.
-        The EgoUAV's camera may not always point to the x axis of EgoUAV's coordinate
-        frame (this coordinate frame is defined by the orientation at which the EgoUAV
-        is spawned). Since we want the true distance between the EgoUAV and the target,
-        we project the distances extracted from the bbox, to EgoUAV's coordinate frame.
         If the bbox is None, all values will be zero.
         """
         dist = np.zeros([3,1])
@@ -290,20 +286,6 @@ class EgoUAV(UAV):
         # to the back side of the LeadingUAV. We require this distance to be
         # from one center to the other.
         dist[0] -= (config.camera_offset_x + config.pawn_size_x/2)
-
-        # Rotate distance vector to EgoUAV's frame.
-        # Currently, the bbox is inside a camera frame, but the camera
-        # may not be pointing to the true x axis of EgoUAV's coordinate frame.
-        yaw_rad = math.radians(self.getPitchRollYaw()[2])
-        # I want to rotate back to the original coordinate frame, thus I want
-        # the yaw of the UAV to be 0. I may achieve this by rotating back yaw_deg
-        # degrees. That is: I want to rotate by -yaw_deg.
-        yaw_rad *= -1
-        rot_mat = np.array([[math.cos(yaw_rad), -math.sin(yaw_rad), 0],
-                            [math.sin(yaw_rad),  math.cos(yaw_rad), 0],
-                            [0,                                  0, 1]
-                        ], dtype=np.float64)
-        dist = rot_mat @ dist
         return dist
 
     def moveToBoundingBoxAsync(self,
@@ -340,7 +322,7 @@ class EgoUAV(UAV):
         """
         distance = self.get_distance_from_bbox(bbox)
         yaw_deg = self.get_yaw_angle_from_bbox(bbox)
-        
+
         # Use a filter to predict LeadingUAV's movement, and/or smooth the
         # measurements that have both process and measurement noise.
         measurement = np.pad(distance, ((0, 3),(0, 0)))

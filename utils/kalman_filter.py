@@ -1,9 +1,6 @@
 import time
-import os
 
 import numpy as np
-import pandas as pd
-from torchvision.io import read_image
 import airsim
 
 from models.UAV import UAV
@@ -78,9 +75,13 @@ def estimate_measurement_noise(network: DetectionNetBench, num_samples: int = 10
     # Create instances for the two UAVs
     egoUAV = EgoUAV("EgoUAV", genmode=True)
     leadingUAV = LeadingUAV("LeadingUAV", genmode=True)
-    # Get the global coordinates for the origin of EgoUAV's coordinate frame.
-    # This is the point on which the vehicle spawns at.
-    ego_origin = np.expand_dims(egoUAV.simGetObjectPose().position.to_numpy_array(), axis=1)
+    # Get the distance between the origins of the two coordinate frames defined
+    # for each of the UAVs. (Reminder: This origin point is defined by where the
+    # UAV spawns at)
+    lead_ego_origin_dist = np.expand_dims((
+        leadingUAV.sim_global_coord_frame_origin
+        - egoUAV.sim_global_coord_frame_origin
+        ).to_numpy_array(), axis=1)
 
     sample_idx = 0
     while sample_idx < num_samples:
@@ -92,8 +93,11 @@ def estimate_measurement_noise(network: DetectionNetBench, num_samples: int = 10
             continue
         
         # Use the API to get the estimated position of the EgoUAV.
+        # TODO: Maybe handle the fact that the EgoUAV also adds measurement
+        # errors, when estimating it's own position.
+        # Maybe change simGetGroundTruthKinematics() to getMultirotorState().kinematics_estimated
         ego_pos_estim = np.expand_dims(
-            egoUAV.getMultirotorState().kinematics_estimated.position.to_numpy_array(),
+            egoUAV.simGetGroundTruthKinematics().position.to_numpy_array(),
             axis=1
         )
         # Estimate leadingUAV's pos
@@ -101,7 +105,7 @@ def estimate_measurement_noise(network: DetectionNetBench, num_samples: int = 10
         
         # Calculate the error for each axis
         lead_pos_gt = np.expand_dims(leadingUAV.simGetObjectPose().position.to_numpy_array(), axis=1)
-        lead_pos_gt += ego_origin
+        lead_pos_gt += lead_ego_origin_dist
 
         # Store the error into the matrix
         observ_matrix[:, sample_idx] = abs(lead_pos_gt - lead_pos_estim).squeeze()

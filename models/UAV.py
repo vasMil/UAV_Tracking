@@ -6,7 +6,7 @@ import airsim
 from msgpackrpc.future import Future
 
 from GlobalConfig import GlobalConfig as config
-
+from utils.operations import rotate_to_yaw
 class UAV():
     """
     The base class for all UAV instances in the simulation:
@@ -111,12 +111,8 @@ class UAV():
         yaw_rad = math.radians(yaw_deg)
         # Perform the rotation of the vector (vx, vy, vz) to the EgoUAV's coordinate frame
         # (i.e. The one that is defined by the orientation of the vehicle, when spawned)
-        rot_mat = np.array([[math.cos(yaw_rad), -math.sin(yaw_rad), 0],
-                            [math.sin(yaw_rad),  math.cos(yaw_rad), 0],
-                            [0,                                  0, 1]
-                        ], dtype=np.float64)
         local_vel = np.array([[vx], [vy], [vz]], dtype=np.float64)
-        world_vel = rot_mat @ local_vel
+        world_vel = rotate_to_yaw(yaw_rad, local_vel)
         # Construct the yaw_mode object
         yaw_mode = airsim.YawMode(False, yaw_deg)
         self.lastAction = self.moveByVelocityAsync(*(world_vel.squeeze()),

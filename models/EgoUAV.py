@@ -1,5 +1,5 @@
 import math
-from typing import Optional, Literal, Tuple
+from typing import Optional, Literal
 
 import airsim
 from msgpackrpc.future import Future
@@ -14,6 +14,7 @@ from nets.DetectionNets import Detection_FasterRCNN
 from nets.DetectionNets import Detection_SSD
 from controller.Controller import Controller
 from controller.KalmanFilter import KalmanFilter
+from utils.operations import rotate_to_yaw
 
 class EgoUAV(UAV):
     def __init__(self,
@@ -326,11 +327,25 @@ class EgoUAV(UAV):
         # Use a filter to predict LeadingUAV's movement, and/or smooth the
         # measurements that have both process and measurement noise.
         measurement = np.pad(distance, ((0, 3),(0, 0)))
+        yaw_rad = math.radians(self.getPitchRollYaw()[2])
         if self.filter:
-            ego_estimated_pos = np.expand_dims(self.getMultirotorState().kinematics_estimated.position.to_numpy_array(), axis=1)
+            # Rotate the measurement axis (camera coordinate frame)
+            # to the original EgoUAV's coordinate frame.
+            measurement[0:3, :] = rotate_to_yaw(-1*yaw_rad, measurement[0:3, :])
+            # Add the position of the EgoUAV to this offset to get the "absolute"
+            # position of the target, in EgoUAV's coordinate frame
+            ego_estimated_pos = np.expand_dims(self.simGetGroundTruthKinematics().position.to_numpy_array(), axis=1)
             measurement[0:3, :] += ego_estimated_pos
+            # Use the Kalman Filter which leverages Newton's motion equations
+            # (and that is why we did all this preprocessing above)
             measurement = self.filter.step(measurement, dt)
+            # Subtract the position of the EgoUAV to recover the distance
+            # between the two UAVs.
             measurement[0:3, :] -= ego_estimated_pos
+            # Rotate the measurement (which is again an offset) to the coordinate frame
+            # of the measurement. (The one defined by the current orientation of EgoUAV's camera)
+            yaw_rad = math.radians(self.getPitchRollYaw()[2])
+            measurement[0:3, :] = rotate_to_yaw(yaw_rad, measurement[0:3, :])
 
         # Use the controller to extract the target velocity, that
         # will help us reach the estimated point, on which the LeadingUAV

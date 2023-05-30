@@ -36,6 +36,10 @@ def create_sample(
         ego_pose = airsim.Pose(position_val=ego_pos, orientation_val=reset_quarernion)
         egoUAV.simSetVehiclePose(ego_pose)
         # Update to the random orientation
+        # TODO: Allow yaw variation. In order to position the LeadingUAV, you will have to
+        # project the position returned by sim_move_within_FOV to the coordinate frame defined
+        # by the orientation of EgoUAV's camera (i.e. rotate to EgoUAV's yaw angle).
+        # You may be better off doing this inside sim_move_within_FOV.
         ego_pose.orientation = airsim.to_quaternion(pitch=random.uniform(-0.2, 0.2), roll=random.uniform(-1,1), yaw=0)
         egoUAV.simSetVehiclePose(ego_pose)
         

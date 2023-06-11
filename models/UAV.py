@@ -89,34 +89,6 @@ class UAV():
                                                           vehicle_name=self.name)
         return self.lastAction
 
-    def moveFrontFirstByVelocityAsync(self, vx, vy, vz,
-                                      duration,
-                                      yaw_deg: float = 0.
-                                ) -> Future:
-        """
-        Uses the AirSim API to move this UAV at a constant velocity (vx, vy, vz),
-        for duration, while taking into account the current yaw rotation of the vehicle.
-        This way you may move front-first towards a direction. This direction is in camera
-        coordinates, which may change during simulation.
-        That is, the x axis extends towards where the front of the UAV is pointing at.
-        The other two axes are perpendicular to this.
-
-        This issue: https://github.com/microsoft/AirSim/issues/688
-        Suggests you use airsim.DrivetrainType.ForwardOnly and setting yaw_mode
-        to YawMode(False, 0).
-        TODO: Test it again and make sure that due to the small dt, AirSim is not
-        able to do all this. Note it here.
-        """
-        velocity = np.array([vx, vy, vz], dtype=np.float64)
-        # Construct the yaw_mode object
-        yaw_mode = airsim.YawMode(False, yaw_deg)
-        self.lastAction = self.moveByVelocityAsync(*velocity,
-                                                   duration=duration,
-                                                   drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
-                                                   yaw_mode=yaw_mode
-                                            )
-        return self.lastAction
-
     def getMultirotorState(self) -> airsim.MultirotorState:
         return self.client.getMultirotorState(vehicle_name=self.name)
 

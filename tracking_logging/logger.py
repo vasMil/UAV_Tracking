@@ -33,6 +33,32 @@ class FrameInfo(TypedDict):
     still_tracking: bool
 
 class Logger:
+    """
+    A class that handles captured frames, by appending the bbox if there is one, along
+    with more information about the angles.
+
+    It is important to note that the bbox displayed on the frame, along with the angle information
+    is not exactly as viewed by the egoUAV. That is because the egoUAV does not have a bbox instantly.
+    There is a small delay between the timestamp at which the frame is captured and the timestamp at which
+    the result from inference can be converted to the velocity. That delay is dt = 1/inference_frequency.
+
+    This has a few implications. The estimated angle and the actual angle are never truly computed as displayed.
+
+    In the EgoUAV:
+    There should be an extra step of subtracting the distance traveled in dt by the EgoUAV, to the offset, before the
+    angle is estimated.
+    This can be extended if we have an estimation for the velocity of the LeadingUAV (for example by using a Kalman Filter).
+    This way we may add to the reduced offset (from the previous step) the estimated distance that the LeadingUAV traveled in dt.
+    Thus way get an even more accurate (recent) estimation of the angle between the egoUAV and the LeadingUAV.
+
+    For the logger:
+    All this is not required, since the logger uses the bbox as soon as the frame is captured, in order to estimate the angle
+    between the two UAVs.
+    
+    Conclusion:
+    The two steps above, of adding and subtracting to/from the offset, is an attempt to correct the fact that 
+    the inferece takes dt time.
+    """
     def __init__(self,
                  egoUAV: EgoUAV,
                  leadingUAV: LeadingUAV,

@@ -107,15 +107,10 @@ class UAV():
         TODO: Test it again and make sure that due to the small dt, AirSim is not
         able to do all this. Note it here.
         """
-        # Convert yaw_deg to radians in order to calculate cos and sin, using pyhton's math library
-        yaw_rad = math.radians(yaw_deg)
-        # Perform the rotation of the vector (vx, vy, vz) to the EgoUAV's coordinate frame
-        # (i.e. The one that is defined by the orientation of the vehicle, when spawned)
-        local_vel = np.array([[vx], [vy], [vz]], dtype=np.float64)
-        world_vel = rotate_to_yaw(yaw_rad, local_vel)
+        velocity = np.array([vx, vy, vz], dtype=np.float64)
         # Construct the yaw_mode object
         yaw_mode = airsim.YawMode(False, yaw_deg)
-        self.lastAction = self.moveByVelocityAsync(*(world_vel.squeeze()),
+        self.lastAction = self.moveByVelocityAsync(*velocity,
                                                    duration=duration,
                                                    drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
                                                    yaw_mode=yaw_mode

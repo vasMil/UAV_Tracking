@@ -1,6 +1,6 @@
 import numpy as np
 
-from controller.Controller import Controller
+# from controller.Controller import Controller
 
 class KalmanFilter():
     def __init__(self,
@@ -58,14 +58,9 @@ class KalmanFilter():
         # Calculate the Kalman Gain
         self.K = self.P_pred @ self.H.T @ (self.H @ self.P_pred @ self.H.T + self.R)
 
-        # If there is no valid measurement, just perform the prediction step
-        # else use the Kalman Gain to incorporate the measurement aswell.
-        if np.any(X_meas != np.zeros([6, 1])):
-            # Reshape the measurement
-            Y_curr = self.C @ X_meas + self.zt
-            self.X_curr = self.X_pred + self.K @ (Y_curr - (self.H @ self.X_pred))
-        else:
-            self.X_curr = self.X_pred
+        # Reshape the measurement
+        Y_curr = self.C @ X_meas + self.zt
+        self.X_curr = self.X_pred + self.K @ (Y_curr - (self.H @ self.X_pred))
 
         # Since we have calculated and output the current estimation of the
         # Kalman filter for timestep t, we now may re-calibrate the process

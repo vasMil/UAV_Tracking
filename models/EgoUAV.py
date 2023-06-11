@@ -1,5 +1,5 @@
 import math
-from typing import Optional, Literal
+from typing import Optional, Literal, Tuple
 
 import airsim
 from msgpackrpc.future import Future
@@ -14,12 +14,12 @@ from nets.DetectionNets import Detection_FasterRCNN
 from nets.DetectionNets import Detection_SSD
 from controller.Controller import Controller
 from controller.KalmanFilter import KalmanFilter
-from utils.operations import rotate_to_yaw
+from utils.operations import rotate_to_yaw, rotate3d
 
 class EgoUAV(UAV):
     def __init__(self,
                  name: str,
-                 filter: Literal["None", "KF"] = "None",
+                 filter_type: Literal["None", "KF"] = "None",
                  port: int = 41451,
                  genmode: bool = False
             ) -> None:
@@ -31,17 +31,20 @@ class EgoUAV(UAV):
         # self.net.load("nets/checkpoints/rcnn100.checkpoint")
         self.net = Detection_SSD()
         self.net.load("nets/checkpoints/ssd300.checkpoint")
-        self.controller = Controller(self)
+        self.controller = Controller(filter_type)
         if filter == "None":
             self.filter = None
         elif filter == "KF":
-            X_init = np.zeros([6, 1]); X_init[0][0] = 3.5
-            P_init = np.zeros([6, 6]); P_init[3][3] = 4; P_init[4][4] = 5; P_init[5][5] = 3
+            X_init = np.zeros([6, 1]); X_init[0, 0] = 3.5; X_init[2, 0] = -1.6
+            P_init = np.zeros([6, 6]);# P_init[3, 3] = 0.5; P_init[4, 4] = 0; P_init[5, 5] = 0.5
             R = np.array([[7.9882659, 3.17199785, 1.58456132],
                           [3.17199785, 15.04112204, 0.14100749],
                           [1.58456132, 0.14100749, 3.98863264]]
             )
             self.filter = KalmanFilter(X_init, P_init, np.zeros([6, 6]), R)
+            self.last_estimated_state = np.zeros([6, 1])
+            self.prev_orientation_deg: Tuple[float, float, float] = (0, 0, 0)
+            self.prev_ego_pos = np.zeros([3, 1])
 
     def _getImage(self, view_mode: bool = False) -> torch.Tensor:
         """
@@ -286,7 +289,7 @@ class EgoUAV(UAV):
         # The distance on the x axis so far, is from EgoUAV's camera,
         # to the back side of the LeadingUAV. We require this distance to be
         # from one center to the other.
-        dist[0] -= (config.camera_offset_x + config.pawn_size_x/2)
+        dist[0] += (config.camera_offset_x + config.pawn_size_x/2)
         return dist
 
     def moveToBoundingBoxAsync(self,
@@ -321,35 +324,11 @@ class EgoUAV(UAV):
         Note: moveToPositionAsync seems to work the best, the attempt was to
         make the EgoUAV movement smooth.
         """
-        distance = self.get_distance_from_bbox(bbox)
-        yaw_deg = self.get_yaw_angle_from_bbox(bbox)
-
-        # Use a filter to predict LeadingUAV's movement, and/or smooth the
-        # measurements that have both process and measurement noise.
-        measurement = np.pad(distance, ((0, 3),(0, 0)))
-        yaw_rad = math.radians(self.getPitchRollYaw()[2])
-        if self.filter:
-            # Rotate the measurement axis (camera coordinate frame)
-            # to the original EgoUAV's coordinate frame.
-            measurement[0:3, :] = rotate_to_yaw(-1*yaw_rad, measurement[0:3, :])
-            # Add the position of the EgoUAV to this offset to get the "absolute"
-            # position of the target, in EgoUAV's coordinate frame
-            ego_estimated_pos = np.expand_dims(self.simGetGroundTruthKinematics().position.to_numpy_array(), axis=1)
-            measurement[0:3, :] += ego_estimated_pos
-            # Use the Kalman Filter which leverages Newton's motion equations
-            # (and that is why we did all this preprocessing above)
-            measurement = self.filter.step(measurement, dt)
-            # Subtract the position of the EgoUAV to recover the distance
-            # between the two UAVs.
-            measurement[0:3, :] -= ego_estimated_pos
-            # Rotate the measurement (which is again an offset) to the coordinate frame
-            # of the measurement. (The one defined by the current orientation of EgoUAV's camera)
-            yaw_rad = math.radians(self.getPitchRollYaw()[2])
-            measurement[0:3, :] = rotate_to_yaw(yaw_rad, measurement[0:3, :])
-
-        # Use the controller to extract the target velocity, that
-        # will help us reach the estimated point, on which the LeadingUAV
-        # is at.
-        velocity = self.controller.step(measurement[0:3,:], dt=dt)
-        self.lastAction = self.moveFrontFirstByVelocityAsync(*(velocity.squeeze()), duration=dt, yaw_deg=yaw_deg)
+        # Extract the offset from the bbox
+        offset = self.get_distance_from_bbox(bbox)
+        # Rotate this offset by the offset between the two coordinate frames (camera's and EgoUAV's)
+        rotated_offset = rotate3d(*(self.getPitchRollYaw()), offset)
+        velocity, yaw_rad = self.controller.step(rotated_offset, dt)
+        yaw_rad = math.atan(offset[1] / offset[0])
+        self.lastAction = self.moveFrontFirstByVelocityAsync(*(velocity.squeeze()), duration=dt, yaw_deg=(self.getPitchRollYaw()[2] + math.degrees(yaw_rad)))
         return self.lastAction

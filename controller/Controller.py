@@ -27,6 +27,7 @@ class Controller():
         if offset is None:
             return self.prev_vel, self.prev_yaw
         
+        offset -= np.multiply(self.prev_vel, dt)
         yaw_deg = pitch_roll_yaw_deg[2] + math.degrees(math.atan(offset[1] / offset[0]))
 
         offset = rotate3d(*(pitch_roll_yaw_deg), point=offset)

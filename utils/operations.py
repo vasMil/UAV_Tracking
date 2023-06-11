@@ -39,3 +39,9 @@ def rotate3d(pitch_deg: float, roll_deg: float, yaw_deg: float, point: np.ndarra
                         ], dtype=np.float64)
     rot_mat = rot_mat_yaw @ rot_mat_pitch @ rot_mat_roll
     return rot_mat @ point
+
+def normalize_angle(angle_deg: float) -> float:
+    angle_deg =  angle_deg % 360
+    if (angle_deg > 180):
+        angle_deg -= 360
+    return angle_deg

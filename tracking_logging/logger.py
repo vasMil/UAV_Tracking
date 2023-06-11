@@ -15,6 +15,7 @@ from models.BoundingBox import BoundingBox
 from GlobalConfig import GlobalConfig as config
 from utils.image import add_bbox_to_image, add_angle_info_to_image
 from utils.simulation import sim_calculate_angle
+from utils.operations import normalize_angle
 
 __all__ = (
     "Logger",
@@ -85,12 +86,14 @@ class Logger:
         self.frame_cnt += 1
         self.info_per_frame.append(frame_info)
 
-    def save_frame(self, frame: torch.Tensor, bbox: Optional[BoundingBox]):
+    def save_frame(self, frame: torch.Tensor, bbox: Optional[BoundingBox], camera_yaw_deg: float):
         if bbox:
             # Calculate the ground truth angle
             sim_angle = sim_calculate_angle(self.egoUAV, self.leadingUAV)
+            sim_angle = normalize_angle(sim_angle)
             # Calculate the estimated angle
-            estim_angle = self.egoUAV.get_yaw_angle_from_bbox(bbox)
+            estim_angle = self.egoUAV.get_yaw_angle_from_bbox(bbox, camera_yaw_deg)
+            estim_angle = normalize_angle(estim_angle)
             # Add info on the camera frame
             frame = add_bbox_to_image(frame, bbox)
             frame = add_angle_info_to_image(frame, estim_angle, sim_angle)

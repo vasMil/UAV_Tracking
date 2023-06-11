@@ -42,10 +42,10 @@ def tracking_at_frequency(sim_fps: int = 60,
     client.confirmConnection()
     print(f"Vehicle List: {client.listVehicles()}\n")
     # Reset the position of the UAVs (just to make sure)
-    client.reset()
+    # client.reset()
     # Wait for the takeoff to complete
     leadingUAV = LeadingUAV("LeadingUAV")
-    egoUAV = EgoUAV("EgoUAV", filter="None")
+    egoUAV = EgoUAV("EgoUAV", filter_type="None")
     egoUAV.lastAction.join()
     leadingUAV.lastAction.join()
 
@@ -66,6 +66,7 @@ def tracking_at_frequency(sim_fps: int = 60,
         camera_frame = egoUAV._getImage()
         bbox, prev_bbox = None, None
         score, prev_score = None, None
+        orient, prev_orient = egoUAV.getPitchRollYaw(), egoUAV.getPitchRollYaw()
         for frame_idx in range(simulation_time_s*sim_fps):
             print(f"\nFRAME: {frame_idx}")
             logger.step(prev_bbox != None)
@@ -82,12 +83,13 @@ def tracking_at_frequency(sim_fps: int = 60,
             # and the output of the NN for this frame.
             if frame_idx % round(sim_fps/infer_freq_Hz) == 0:
                 # Run egoUAV's detection net, save the frame with all
-                # required inforamtion. Hold on to the bbox, to move towards it when the
+                # required information. Hold on to the bbox, to move towards it when the
                 # next frame for evaluation is captured.
                 bbox, score = egoUAV.net.eval(camera_frame)
+                orient = egoUAV.getPitchRollYaw()
 
                 # Perform the movement for the previous detection
-                egoUAV.moveToBoundingBoxAsync(prev_bbox, dt=(1/infer_freq_Hz))
+                egoUAV.moveToBoundingBoxAsync(prev_bbox, prev_orient, dt=(1/infer_freq_Hz))
                 if prev_score and prev_score >= config.score_threshold:
                     print(f"UAV detected {prev_score}, moving towards it...")
                 else:
@@ -96,11 +98,12 @@ def tracking_at_frequency(sim_fps: int = 60,
                 # Update
                 prev_bbox = bbox
                 prev_score = score
+                prev_orient = orient
             else:
                 bbox, score = None, None
 
             if frame_idx % round(sim_fps/camera_fps) == 0:
-                logger.save_frame(camera_frame, bbox)
+                logger.save_frame(camera_frame, bbox, orient[2])
 
             # Restart the simulation for a few seconds to match
             # the desired sim_fps
@@ -147,20 +150,21 @@ if __name__ == '__main__':
     #     ssd.save(f"nets/checkpoints/ssd{i+10-1}.checkpoint")
 
     # Run the simulation
-    tracking_at_frequency(simulation_time_s=60, infer_freq_Hz=10)
-    # gl = GraphLogs(pickle_file="recordings/diogenis_ssd30_vel5/log.pkl")
+    tracking_at_frequency(simulation_time_s=10, infer_freq_Hz=30)
+    # gl = GraphLogs(pickle_file="../proodos/keypoint_presentation/ssd10_log.pkl")
     # gl.graph_distance(sim_fps=60)
-
+    # gl = GraphLogs(pickle_file="../proodos/keypoint_presentation/ssd30_log.pkl")
+    # gl.graph_distance(sim_fps=60)
     # Run inference frequency benchmark
     # from nets.DetectionNets import Detection_SSD, Detection_FasterRCNN
     # ssd = Detection_SSD(root_test_dir="/home/airsim_user/UAV_Tracking/data/empty_map/test",
     # 		          json_test_labels="/home/airsim_user/UAV_Tracking/data/empty_map/test/empty_map.json")
-    # ssd.get_inference_frequency(num_tests=10, warmup=2, cudnn_benchmark=True)
+    # # ssd.get_inference_frequency(num_tests=10, warmup=2, cudnn_benchmark=True)
     # ssd.load("nets/checkpoints/ssd300.checkpoint")
     # ssd.plot_losses()
     # rcnn = Detection_FasterRCNN(root_test_dir="/home/airsim_user/UAV_Tracking/data/empty_map/test",
     #        	                 json_test_labels="/home/airsim_user/UAV_Tracking/data/empty_map/test/empty_map.json")
-    # rcnn.load("nets/checkpoints/rcnn100.checkpoint")
+    # rcnn.load("nets/checkpoints/rcnn120.checkpoint")
     # rcnn.plot_losses()
     # rcnn.get_inference_frequency(num_tests=10, warmup=2, cudnn_benchmark=True)
 
@@ -181,3 +185,50 @@ if __name__ == '__main__':
     # from utils.kalman_filter import estimate_process_noise, estimate_measurement_noise
     # from nets.DetectionNets import Detection_SSD
     # print(estimate_measurement_noise(network=Detection_SSD()))
+    
+    # Test distance estimation
+    # import math
+    # egoUAV = EgoUAV("EgoUAV")
+    # leadingUAV = LeadingUAV("LeadingUAV")
+    # leadingUAV.lastAction.join()
+    # egoUAV.lastAction.join()
+
+    # # img = egoUAV._getImage()
+    # # save_image(img, "temp.png")
+    # # bbox, _ = egoUAV.net.eval(img)
+    # # estim_dist = egoUAV.get_distance_from_bbox(bbox)
+    # # true_dist = np.expand_dims((leadingUAV.simGetObjectPose().position - egoUAV.simGetObjectPose().position).to_numpy_array(), axis=1)
+    # # error = estim_dist - true_dist
+
+    # # print(f"\n estim_dist \n {estim_dist}")
+    # # print(f"\n true_dist \n {true_dist}")
+    # # print(f"\n error \n {error}")
+    # # Place the leadingUAV at an angle > 45 deg from EgoUAV
+    # x_dist = 2
+    # y_dist = x_dist*math.tan(math.radians(-80))
+    # z_dist = leadingUAV.simGetGroundTruthKinematics().position.z_val - 1
+    # target_pos = airsim.Vector3r(x_dist, y_dist, z_dist) + leadingUAV.sim_global_coord_frame_origin - egoUAV.sim_global_coord_frame_origin
+    # leadingUAV.moveToPositionAsync(*target_pos, velocity=5).join()
+    # # Rotate the EgoUAV at an 45deg angle
+    # egoUAV.rotateToYawAsync(-45).join()
+    # # Try to move towards the LeadingUAV
+    # bbox, score = egoUAV.net.eval(egoUAV._getImage())
+    # # Calculate the magnitude of the distance between the two UAVs
+    # if not bbox:
+    #     egoUAV.disable()
+    #     leadingUAV.disable()
+    #     egoUAV.client.reset()
+    #     raise Exception("No bbox found")
+    # dist = math.sqrt(x_dist**2 + y_dist**2 + z_dist**2)
+    # input("Press any key to move towards the LeadingUAV")
+    # egoUAV.moveToBoundingBoxAsync(bbox, egoUAV.getPitchRollYaw(), dt = dist/config.uav_velocity).join()
+    # input("Press any key to disable the UAVs and reset")
+    # egoUAV.disable()
+    # leadingUAV.disable()
+    # egoUAV.client.reset()
+
+    # import math
+    # import numpy as np
+    # from utils.operations import rotate_to_yaw
+    # vel = rotate_to_yaw(math.radians(360), np.array([[math.sqrt(8)], [0], [0]]))
+    # print(vel)

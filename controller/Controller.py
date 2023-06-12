@@ -11,9 +11,8 @@ class Controller():
     def __init__(self,
                  filter_type: Literal["None", "KF"] = "None"
             ) -> None:
-        if filter_type == "None":
-            self.filter = None
-        elif filter == "KF":
+        self.filter = None
+        if filter_type == "KF":
             X_init = np.zeros([6, 1]); X_init[0, 0] = 3.5; X_init[2, 0] = -1.6
             P_init = np.zeros([6, 6]); P_init[3, 3] = 4; P_init[4, 4] = 5; P_init[5, 5] = 3
             R = np.array([[7.9882659, 3.17199785, 1.58456132],
@@ -40,14 +39,14 @@ class Controller():
         """
         if offset is None:
             return self.prev_vel, self.prev_yaw
-        
+
         # Adjust the offset by adding the expected amount the EgoUAV moved in the time
         # between the frame capture and the step of the controller
         if self.filter is None: # TODO: Merge with if below
             offset -= np.multiply(self.prev_vel, dt)
 
         yaw_deg = pitch_roll_yaw_deg[2] + math.degrees(math.atan(offset[1] / offset[0]))
-        
+
         # Rotate the offset vector so we may view the camera coordinate system
         # as the EgoUAVs coordinate system.
         offset = rotate3d(*(pitch_roll_yaw_deg), point=offset)
@@ -57,7 +56,7 @@ class Controller():
             offset = np.multiply(offset, np.array(
                 [[config.weight_vel_x], [config.weight_vel_y], [config.weight_vel_z]]
             ))
-        elif isinstance(self.filter, KalmanFilter) and ego_pos:
+        elif isinstance(self.filter, KalmanFilter) and ego_pos is not None:
             # offset += np.multiply(self.prev_lead_vel, dt)
             ego_pos -= self.prev_vel*dt
             leading_pos = ego_pos + offset

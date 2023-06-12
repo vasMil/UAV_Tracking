@@ -45,7 +45,7 @@ def tracking_at_frequency(sim_fps: int = 60,
     # client.reset()
     # Wait for the takeoff to complete
     leadingUAV = LeadingUAV("LeadingUAV")
-    egoUAV = EgoUAV("EgoUAV", filter_type="None")
+    egoUAV = EgoUAV("EgoUAV", filter_type="KF")
     egoUAV.lastAction.join()
     leadingUAV.lastAction.join()
 

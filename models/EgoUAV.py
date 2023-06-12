@@ -291,7 +291,13 @@ class EgoUAV(UAV):
         """           
         offset = self.get_distance_from_bbox(bbox)
         pitch_roll_yaw_deg = np.array(orient)
-        velocity, yaw_deg = self.controller.step(offset, pitch_roll_yaw_deg, dt)
+        velocity, yaw_deg = self.controller.step(offset,
+                                                 pitch_roll_yaw_deg,
+                                                 dt,
+                                                 np.expand_dims(self.simGetGroundTruthKinematics()
+                                                                .position
+                                                                .to_numpy_array(), axis=1)
+                                            )
         self.lastAction = self.moveByVelocityAsync(*(velocity.squeeze()),
                                                    duration=dt,
                                                    yaw_mode=airsim.YawMode(False, yaw_deg)

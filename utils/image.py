@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Optional, TypedDict
 
 import torch
 import torchvision.transforms.functional as F
@@ -6,6 +6,23 @@ from PIL import ImageFont, ImageDraw
 
 from GlobalConfig import GlobalConfig as config
 from models.BoundingBox import BoundingBox
+
+class InfoForFrame(TypedDict):
+    """
+    A TypedDict that stores information logger wants to display on the frame.
+
+    Attributes:
+    ego_vel: The velocity of the egoUAV, can be obtained from the simulation.
+    ego_vel: The velocity of the leadingUAV, can be obtained from the simulation.
+    estim_angle: Is the estimated angle between the leadingUAV and the egoUAV as
+                 extracted from the size of the bbox inside the frame.
+    actual_angle: The angle between the two UAVs as calculated using simulation
+                  ground truth.
+    """
+    ego_vel: Optional[Tuple[float, float, float]]
+    leading_vel: Optional[Tuple[float, float, float]]
+    estim_angle: Optional[float]
+    actual_angle: Optional[float]
 
 def add_bbox_to_image(image: torch.Tensor, bbox: BoundingBox) -> torch.Tensor:
     image = image.clone()
@@ -20,10 +37,9 @@ def add_bbox_to_image(image: torch.Tensor, bbox: BoundingBox) -> torch.Tensor:
         image[i, y1:y2, x2] = color
     return image
 
-def add_angle_info_to_image(image: torch.Tensor,
-                            estim_angle_deg: float,
-                            sim_angle_deg: float
-                        ) -> torch.Tensor:
+def add_info_to_image(image: torch.Tensor,
+                      infoForFrame: InfoForFrame
+                    ) -> torch.Tensor:
     # Configure font size and spacing between two lines of text
     # as well as default colors
     font_size = 10
@@ -51,22 +67,32 @@ def add_angle_info_to_image(image: torch.Tensor,
     draw = ImageDraw.Draw(pil_img)
     font = ImageFont.load_default()
     # Add the text
-    draw.text(getNextLinePos(),
-              f"estim_angle: {estim_angle_deg:.2f}",
-              font=font,
-              fill=default
-            )
-    draw.text(getNextLinePos(),
-              f"actual_angle: {sim_angle_deg:.2f}", font=font,
-              fill=default
-            )
+    for key in list(infoForFrame.keys()):
+        info = infoForFrame[key]
+        if isinstance(info, Tuple):
+            temp = ""
+            for x in info: temp += f"{x:.2f},"
+            info = temp[:-1]
+        elif isinstance(info, float):
+            info = f"{info:.2f}"
+        else:
+            raise Exception(f"Unexpected type: {type(info)}, for {key}, in infoForFrame object")
+        
+        draw.text(getNextLinePos(),
+                  f"{key:13s}: {info:15s}",
+                  font=font,
+                  fill=default
+                )
     
-    angle_error = sim_angle_deg - estim_angle_deg
-    draw.text(getNextLinePos(),
-              f"error: {angle_error:.2f}",
-              font=font,
-              fill=green if abs(angle_error) < 1 else red
-            )
+    # Append an extra line for the error between the two angles
+    if (infoForFrame["actual_angle"] != None) and (infoForFrame["estim_angle"] != None):
+        angle_error = infoForFrame["actual_angle"] - infoForFrame["estim_angle"]
+        draw.text(getNextLinePos(),
+                  f"error: {angle_error:.2f}",
+                  font=font,
+                  fill=green if abs(angle_error) < 1 else red
+                )
+    
     return F.to_tensor(pil_img)
 
 def increase_resolution(image: torch.Tensor, increase_factor: int = 2) -> torch.Tensor:

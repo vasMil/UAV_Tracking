@@ -13,7 +13,7 @@ from models.EgoUAV import EgoUAV
 from models.LeadingUAV import LeadingUAV
 from models.BoundingBox import BoundingBox
 from GlobalConfig import GlobalConfig as config
-from utils.image import add_bbox_to_image, add_angle_info_to_image, increase_resolution
+from utils.image import InfoForFrame, add_bbox_to_image, add_info_to_image, increase_resolution
 from utils.simulation import sim_calculate_angle
 from utils.operations import normalize_angle
 
@@ -86,6 +86,7 @@ class Logger:
         os.makedirs(self.images_path)
         self.info_per_frame: List[FrameInfo] = []
         self.frame_cnt: int = 0
+        self.image_res_incr_factor = 2
 
     def step(self, still_tracking: bool):
         # Collect data from simulation to variables
@@ -113,8 +114,9 @@ class Logger:
         self.info_per_frame.append(frame_info)
 
     def save_frame(self, frame: torch.Tensor, bbox: Optional[BoundingBox], camera_yaw_deg: float):
+        estim_angle = None
+        sim_angle = None
         if bbox:
-
             # Calculate the ground truth angle
             sim_angle = sim_calculate_angle(self.egoUAV, self.leadingUAV)
             sim_angle = normalize_angle(sim_angle)
@@ -123,8 +125,17 @@ class Logger:
             estim_angle = normalize_angle(estim_angle)
             # Add info on the camera frame
             frame = add_bbox_to_image(frame, bbox)
-            frame = increase_resolution(frame, 5)
-            frame = add_angle_info_to_image(frame, estim_angle, sim_angle)
+            frame = increase_resolution(frame, self.image_res_incr_factor)
+
+        # Populate an InfoForFrame instance and add it's information to the frame
+        last_frameInfo = self.info_per_frame[-1]
+        infoForFrame: InfoForFrame = {
+            "ego_vel": last_frameInfo["egoUAV_velocity"],
+            "leading_vel": last_frameInfo["leadingUAV_velocity"],
+            "estim_angle": estim_angle,
+            "actual_angle": sim_angle
+        }
+        frame = add_info_to_image(frame, infoForFrame)
         save_image(frame, f"{self.images_path}/img_EgoUAV_{time.time_ns()}.png")
 
     def write_setup(self):
@@ -167,7 +178,8 @@ class Logger:
         video = cv2.VideoWriter(self.video_path,
                                 fourcc,
                                 self.camera_fps,
-                                (config.img_width, config.img_height)
+                                (config.img_width*self.image_res_incr_factor,
+                                 config.img_height*self.image_res_incr_factor)
                 )
     
         # Appending the images to the video one by one

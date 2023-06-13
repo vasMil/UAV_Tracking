@@ -1,6 +1,6 @@
-import numpy as np
+from typing import Optional
 
-# from controller.Controller import Controller
+import numpy as np
 
 class KalmanFilter():
     def __init__(self,
@@ -28,11 +28,11 @@ class KalmanFilter():
         # Yet unknown matrices
         self.K = np.zeros([6, 3])       # Kalman Gain
         self.X_curr = np.zeros([6, 1])  # Current state matrix (at time t)
-        # self.P_curr = np.zeros([6, 1])  # Current process covariance matrix (at time t)
+        self.P_curr = np.zeros([6, 1])  # Current process covariance matrix (at time t)
         self.X_pred = np.zeros([6, 1])  # Predicted state matrix (at time t)
         self.P_pred = np.zeros([6, 6])  # Predicted process covariance matrix (at time t)
 
-    def step(self, X_meas: np.ndarray, dt: float) -> np.ndarray:
+    def step(self, X_meas: Optional[np.ndarray], dt: float) -> np.ndarray:
         """
         Using the preparation from prepare_step and the provided measurement.
         Update the estimation and output the new prediction.
@@ -55,19 +55,24 @@ class KalmanFilter():
         self.X_pred = self.A @ self.X_prev + self.wt
         self.P_pred = self.A @ self.P_prev @ self.A.T + self.Q
         
-        # Calculate the Kalman Gain
-        self.K = self.P_pred @ self.H.T @ (self.H @ self.P_pred @ self.H.T + self.R)
-
-        # Reshape the measurement
-        Y_curr = self.C @ X_meas + self.zt
-        self.X_curr = self.X_pred + self.K @ (Y_curr - (self.H @ self.X_pred))
-
-        # Since we have calculated and output the current estimation of the
-        # Kalman filter for timestep t, we now may re-calibrate the process
-        # covariance matrix P and continue to the next timestep. That is
-        # assign t -> t-1 (curr variables to prev)
-        self.P_prev = (np.eye(6, 6) - (self.K @ self.H)) @ self.P_pred
+        if X_meas is not None:
+            # Calculate the Kalman Gain
+            self.K = self.P_pred @ self.H.T @ (self.H @ self.P_pred @ self.H.T + self.R)
+            # Reshape the measurement
+            Y_curr = self.C @ X_meas + self.zt
+            self.X_curr = self.X_pred + self.K @ (Y_curr - (self.H @ self.X_pred))
+            # Since we have calculated and output the current estimation of the
+            # Kalman filter for timestep t, we now may re-calibrate the process
+            # covariance matrix P and continue to the next timestep. That is
+            # assign t -> t-1 (curr variables to prev)
+            self.P_curr = (np.eye(6, 6) - (self.K @ self.H)) @ self.P_pred
+        else:
+            self.X_curr = self.X_pred
+            self.P_curr = self.P_pred
+        
+        # Update step
         self.X_prev = self.X_curr
+        self.P_prev = self.P_curr
 
         # Convert the output state of the Kalman Filter to a velocity, which will be
         # applied for dt seconds

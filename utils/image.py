@@ -68,3 +68,22 @@ def add_angle_info_to_image(image: torch.Tensor,
               fill=green if abs(angle_error) < 1 else red
             )
     return F.to_tensor(pil_img)
+
+def increase_resolution(image: torch.Tensor, increase_factor: int = 2) -> torch.Tensor:
+    """
+    Given an image and how much larger it should be this function
+    preserves the aspect ratio of this image and repeats increase_factor times
+    each pixel value at each image dimension (excluding the color channel).
+
+    This is achieved by utilizing the Kronecker product of matrices (tensors in our case).
+    """
+    # As stated in the documentation: https://pytorch.org/docs/stable/generated/torch.kron.html
+    # If the two tensors that are provided to the kron function do not have the same
+    # number of dimensions, the one with the less dimensions will be unsqueezed until
+    # it has the same number of dimensions.
+    # Reminder: tensor of size (2, 2) if unsqueezed will result to a tensor of size (2, 2, 1)
+    # If there is a 3rd dimension to the provided image (the color channels) we do not want
+    # to increase their number (ie we require the resulting image to have 3 channels aswell)
+    # thus unsqueezing the spread_matrix works.
+    spread_matrix = torch.ones(increase_factor, increase_factor)
+    return torch.kron(image, spread_matrix)

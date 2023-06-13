@@ -13,7 +13,7 @@ from models.EgoUAV import EgoUAV
 from models.LeadingUAV import LeadingUAV
 from models.BoundingBox import BoundingBox
 from GlobalConfig import GlobalConfig as config
-from utils.image import add_bbox_to_image, add_angle_info_to_image
+from utils.image import add_bbox_to_image, add_angle_info_to_image, increase_resolution
 from utils.simulation import sim_calculate_angle
 from utils.operations import normalize_angle
 
@@ -114,6 +114,7 @@ class Logger:
 
     def save_frame(self, frame: torch.Tensor, bbox: Optional[BoundingBox], camera_yaw_deg: float):
         if bbox:
+
             # Calculate the ground truth angle
             sim_angle = sim_calculate_angle(self.egoUAV, self.leadingUAV)
             sim_angle = normalize_angle(sim_angle)
@@ -122,6 +123,7 @@ class Logger:
             estim_angle = normalize_angle(estim_angle)
             # Add info on the camera frame
             frame = add_bbox_to_image(frame, bbox)
+            frame = increase_resolution(frame, 5)
             frame = add_angle_info_to_image(frame, estim_angle, sim_angle)
         save_image(frame, f"{self.images_path}/img_EgoUAV_{time.time_ns()}.png")
 

@@ -69,6 +69,8 @@ def add_info_to_image(image: torch.Tensor,
     # Add the text
     for key in list(infoForFrame.keys()):
         info = infoForFrame[key]
+        if info is None: continue
+
         if isinstance(info, Tuple):
             temp = ""
             for x in info: temp += f"{x:.2f},"
@@ -77,13 +79,13 @@ def add_info_to_image(image: torch.Tensor,
             info = f"{info:.2f}"
         else:
             raise Exception(f"Unexpected type: {type(info)}, for {key}, in infoForFrame object")
-        
+
         draw.text(getNextLinePos(),
                   f"{key:13s}: {info:15s}",
                   font=font,
                   fill=default
                 )
-    
+
     # Append an extra line for the error between the two angles
     if (infoForFrame["actual_angle"] != None) and (infoForFrame["estim_angle"] != None):
         angle_error = infoForFrame["actual_angle"] - infoForFrame["estim_angle"]
@@ -92,7 +94,7 @@ def add_info_to_image(image: torch.Tensor,
                   font=font,
                   fill=green if abs(angle_error) < 1 else red
                 )
-    
+
     return F.to_tensor(pil_img)
 
 def increase_resolution(image: torch.Tensor, increase_factor: int = 2) -> torch.Tensor:

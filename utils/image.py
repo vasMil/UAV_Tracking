@@ -19,6 +19,7 @@ class InfoForFrame(TypedDict):
     actual_angle: The angle between the two UAVs as calculated using simulation
                   ground truth.
     """
+    score: Optional[float]
     ego_vel: Optional[Tuple[float, float, float]]
     leading_vel: Optional[Tuple[float, float, float]]
     estim_angle: Optional[float]
@@ -44,8 +45,8 @@ def add_info_to_image(image: torch.Tensor,
     # as well as default colors
     font_size = 10
     spacing = 2
-    first_line_pos = torch.tensor((5, 5))
-    next_line_offset = torch.tensor((0, font_size + spacing))
+    first_line_pos = torch.tensor([5, 5])
+    next_line_offset = torch.tensor([0, font_size + spacing])
     green = (21, 237, 191)
     red = (237, 21, 92)
     default = (0, 0, 0)
@@ -71,6 +72,11 @@ def add_info_to_image(image: torch.Tensor,
         info = infoForFrame[key]
         if info is None: continue
 
+        if key == "score":
+            color = green if info >= config.score_threshold else red
+        else:
+            color = default
+
         if isinstance(info, Tuple):
             temp = ""
             for x in info: temp += f"{x:.2f},"
@@ -79,11 +85,11 @@ def add_info_to_image(image: torch.Tensor,
             info = f"{info:.2f}"
         else:
             raise Exception(f"Unexpected type: {type(info)}, for {key}, in infoForFrame object")
-
+        
         draw.text(getNextLinePos(),
                   f"{key:13s}: {info:15s}",
                   font=font,
-                  fill=default
+                  fill=color
                 )
 
     # Append an extra line for the error between the two angles

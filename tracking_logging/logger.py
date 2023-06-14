@@ -130,6 +130,7 @@ class Logger:
         # Populate an InfoForFrame instance and add it's information to the frame
         last_frameInfo = self.info_per_frame[-1]
         infoForFrame: InfoForFrame = {
+            "score": bbox.score if bbox else None,
             "ego_vel": last_frameInfo["egoUAV_velocity"],
             "leading_vel": last_frameInfo["leadingUAV_velocity"],
             "estim_angle": estim_angle,

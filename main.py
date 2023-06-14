@@ -85,7 +85,7 @@ def tracking_at_frequency(sim_fps: int = 60,
                 # Run egoUAV's detection net, save the frame with all
                 # required information. Hold on to the bbox, to move towards it when the
                 # next frame for evaluation is captured.
-                bbox, score = egoUAV.net.eval(camera_frame)
+                bbox, score = egoUAV.net.eval(camera_frame, 0)
                 orient = egoUAV.getPitchRollYaw()
 
                 # Perform the movement for the previous detection

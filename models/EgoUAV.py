@@ -288,8 +288,12 @@ class EgoUAV(UAV):
 
         Note: moveToPositionAsync seems to work the best, the attempt was to
         make the EgoUAV movement smooth.
-        """           
-        offset = self.get_distance_from_bbox(bbox)
+        """
+        if bbox:
+            offset = self.get_distance_from_bbox(bbox)
+        else:
+            offset = None
+
         pitch_roll_yaw_deg = np.array(orient)
         velocity, yaw_deg = self.controller.step(offset,
                                                  pitch_roll_yaw_deg,

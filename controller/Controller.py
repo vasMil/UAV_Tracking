@@ -2,10 +2,11 @@ from typing import Literal, Optional, Tuple
 import math
 
 import numpy as np
+import airsim
 
 from GlobalConfig import GlobalConfig as config
 from controller.KalmanFilter import KalmanFilter
-from utils.operations import rotate3d
+from utils.operations import rotate3d, rotate_to_yaw
 
 class Controller():
     def __init__(self,
@@ -13,12 +14,13 @@ class Controller():
             ) -> None:
         self.filter = None
         if filter_type == "KF":
-            X_init = np.zeros([6, 1]); X_init[0, 0] = 3.5; X_init[2, 0] = -1.6
-            P_init = np.zeros([6, 6]); P_init[3, 3] = 4; P_init[4, 4] = 5; P_init[5, 5] = 3
-            R = np.array([[7.9882659, 3.17199785, 1.58456132],
-                          [3.17199785, 15.04112204, 0.14100749],
-                          [1.58456132, 0.14100749, 3.98863264]]
-            )
+            client = airsim.MultirotorClient()
+            gt_pos = client.simGetGroundTruthKinematics(vehicle_name="LeadingUAV").position
+            X_init = np.zeros([6, 1]); X_init[0, 0] = gt_pos.x_val; X_init[1, 0] = gt_pos.y_val; X_init[2, 0] = gt_pos.z_val
+            P_init = np.zeros([6, 6]); P_init[3, 3] = 1; P_init[4, 4] = 1; P_init[5, 5] = 1
+            R = np.array([[30.45326648, -3.27817233, -5.51873313],
+                          [-3.27817233, 33.64031622,  1.07687012],
+                          [-5.51873313,  1.07687012, 13.53362295]])
             self.filter = KalmanFilter(X_init, P_init, np.zeros([6, 6]), R)
         self.prev_vel = np.zeros([3, 1])
         self.prev_yaw = 0
@@ -46,27 +48,28 @@ class Controller():
             # Rotate the offset vector so we may view the camera coordinate system
             # as the EgoUAVs coordinate system.
             offset = rotate3d(*(pitch_roll_yaw_deg), point=offset)
-            # Adjust the offset by adding the expected amount the EgoUAV moved in the time
+            # Adjust the offset by subtracting the expected amount the EgoUAV moved in the time
             # between the frame capture and the step of the controller
             offset -= np.multiply(self.prev_vel, dt)
-            # Multiply with the weights
-            offset = np.multiply(offset, np.array(
-                [[config.weight_vel_x], [config.weight_vel_y], [config.weight_vel_z]]
-            ))
         elif isinstance(self.filter, KalmanFilter) and ego_pos is not None:
+            ego_pos -= self.prev_vel*dt
             if offset is None:
                 leading_state = self.filter.step(None, dt)
             else:
-                # offset += np.multiply(self.prev_lead_vel, dt)
-                ego_pos -= self.prev_vel*dt
+                offset = rotate3d(*(np.multiply(pitch_roll_yaw_deg, -1)), point=offset)
                 leading_pos = ego_pos + offset
                 leading_state = self.filter.step(np.pad(leading_pos, ((0,3),(0,0))), dt)
-            
+
             leading_pos, leading_vel = np.vsplit(leading_state, 2)
             offset = leading_pos - ego_pos
             yaw_deg = math.degrees(math.atan(offset[1] / offset[0]))
         else:
             raise AttributeError("Filter type is wrong or ego_pos is not provided!")
+
+        # Multiply with the weights
+        offset = np.multiply(offset, np.array(
+            [[config.weight_vel_x], [config.weight_vel_y], [config.weight_vel_z]]
+        ))
 
         offset_magn = np.linalg.norm(offset)
         if offset_magn != 0:

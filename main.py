@@ -48,7 +48,12 @@ def tracking_at_frequency(sim_fps: int = 60,
     egoUAV = EgoUAV("EgoUAV", filter_type="KF")
     egoUAV.lastAction.join()
     leadingUAV.lastAction.join()
-
+    leadingUAV.moveByVelocityAsync(0, 0, -5, 10)
+    egoUAV.moveByVelocityAsync(0, 0, -5, 10)
+    egoUAV.lastAction.join()
+    leadingUAV.lastAction.join()
+    import time
+    time.sleep(10)
     # Create a Logger
     logger = Logger(egoUAV,
                     leadingUAV,
@@ -77,6 +82,7 @@ def tracking_at_frequency(sim_fps: int = 60,
             # Update the leadingUAV velocity every update_vel_s*sim_fps frames
             if frame_idx % (leadingUAV_update_vel_interval_s*sim_fps) == 0:
                 leadingUAV.random_move(leadingUAV_update_vel_interval_s)
+                # leadingUAV.moveByVelocityAsync(5,0,0,leadingUAV_update_vel_interval_s)
 
             # Get a bounding box and move towards the previous detection
             # this way we also simulate the delay between the capture of the frame
@@ -131,9 +137,9 @@ if __name__ == '__main__':
     # Generate data
     # from gendata import generate_training_data
     # generate_training_data(
-    #     csv_file="/home/airsim_user/UAV_Tracking/data/empty_map/train/empty_map_positions.csv",
-    #     root_dir="/home/airsim_user/UAV_Tracking/data/empty_map/train/",
-    #     num_samples=100
+    #     csv_file="/home/airsim_user/UAV_Tracking/data/empty_map/shadows/empty_map_positions.csv",
+    #     root_dir="/home/airsim_user/UAV_Tracking/data/empty_map/shadows/",
+    #     num_samples=500
     # )
 
     # Train the NNs
@@ -181,11 +187,8 @@ if __name__ == '__main__':
     # Test Kalman utility functions
     # from utils.kalman_filter import estimate_process_noise, estimate_measurement_noise
     # from nets.DetectionNets import Detection_SSD
-    # print(estimate_measurement_noise(network=Detection_SSD()))
-    # from utils.kalman_filter import estimate_process_noise, estimate_measurement_noise
-    # from nets.DetectionNets import Detection_SSD
-    # print(estimate_measurement_noise(network=Detection_SSD()))
-    
+    # print(estimate_measurement_noise(network=Detection_SSD(), num_samples=10000))
+
     # Test distance estimation
     # import math
     # egoUAV = EgoUAV("EgoUAV")

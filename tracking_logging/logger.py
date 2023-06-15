@@ -125,8 +125,8 @@ class Logger:
             estim_angle = normalize_angle(estim_angle)
             # Add info on the camera frame
             frame = add_bbox_to_image(frame, bbox)
-            frame = increase_resolution(frame, self.image_res_incr_factor)
 
+        frame = increase_resolution(frame, self.image_res_incr_factor)
         # Populate an InfoForFrame instance and add it's information to the frame
         last_frameInfo = self.info_per_frame[-1]
         infoForFrame: InfoForFrame = {

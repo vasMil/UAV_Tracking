@@ -13,7 +13,7 @@ class GlobalConfig:
 
     # The minimum score, for which a detection is considered
     # valid and thus is translated to EgoUAV movement.
-    score_threshold: float = 0.
+    score_threshold: float = 0.1
 
     # The upper an lower limit for the velocity on each axis of both UAVs
     max_vx, max_vy, max_vz = 5.,  5,  2.5
@@ -31,9 +31,9 @@ class GlobalConfig:
     # - https://github.com/microsoft/AirSim/issues/2971
     # - https://github.com/microsoft/AirSim/issues/2974
     # As a reminder: (source: https://microsoft.github.io/AirSim/apis/)
-    # If you start another command then it automatically cancels the previous task and 
+    # If you start another command then it automatically cancels the previous task and
     # starts new command.
-    # This allows to use a pattern, where your code continuously does the sensing, 
+    # This allows to use a pattern, where your code continuously does the sensing,
     # computes a new trajectory to follow and issues that path to vehicle in AirSim.
     sleep_const: float = 2
 
@@ -73,7 +73,7 @@ class GlobalConfig:
     # Data generation
     # Bounds for random distance between the two UAVs
     min_dist = 1.5
-    max_dist = 15
+    max_dist = 10
     # Box to allow random movement of the egoUAV in
     rand_move_box_x = (-10, 10)
     rand_move_box_y = (-10, 10)

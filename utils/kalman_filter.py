@@ -91,7 +91,7 @@ def estimate_measurement_noise(network: DetectionNetBench, num_samples: int = 10
         bbox, _ = network.eval(img)
         if not bbox:
             continue
-        
+
         # Use the API to get the estimated position of the EgoUAV.
         # TODO: Maybe handle the fact that the EgoUAV also adds measurement
         # errors, when estimating it's own position.
@@ -101,7 +101,8 @@ def estimate_measurement_noise(network: DetectionNetBench, num_samples: int = 10
             axis=1
         )
         # Estimate leadingUAV's pos
-        lead_pos_estim = ego_pos_estim + egoUAV.get_distance_from_bbox(bbox)
+        # Since there is a bbox there get_distance_from_bbox will return an offset
+        lead_pos_estim = ego_pos_estim + egoUAV.get_distance_from_bbox(bbox) # type: ignore
         
         # Calculate the error for each axis
         lead_pos_gt = np.expand_dims(leadingUAV.simGetObjectPose().position.to_numpy_array(), axis=1)

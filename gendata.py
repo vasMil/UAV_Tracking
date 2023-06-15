@@ -13,8 +13,8 @@ from GlobalConfig import GlobalConfig as config
 
 
 def create_sample(
-        egoUAV: EgoUAV, 
-        leadingUAV: LeadingUAV, 
+        egoUAV: EgoUAV,
+        leadingUAV: LeadingUAV,
     ) -> Tuple[torch.Tensor, airsim.Vector3r]:
     """
     Given two UAVs return a tuple consisting of an image (torch.Tensor) and the offset.
@@ -42,10 +42,10 @@ def create_sample(
         # You may be better off doing this inside sim_move_within_FOV.
         ego_pose.orientation = airsim.to_quaternion(pitch=random.uniform(-0.2, 0.2), roll=random.uniform(-1,1), yaw=0)
         egoUAV.simSetVehiclePose(ego_pose)
-        
+
         _, offset = leadingUAV.sim_move_within_FOV(egoUAV, execute=False)
         lead_pos = offset + ego_pos - leadingUAV.sim_global_coord_frame_origin
-        
+
         # Reset the orientation of the egoUAV before making any further changes
         lead_pose = airsim.Pose(position_val=lead_pos, orientation_val=reset_quarernion)
         leadingUAV.simSetVehiclePose(lead_pose)
@@ -62,7 +62,7 @@ def create_sample(
             # Adding this offset to the egoUAV's position (defined in coordinate frame with it's origin (0,0,0) being where the egoUAV spawned)
             # should result to the target_position the egoUAV needs to move to next.
             global_offset = leadingUAV.simGetObjectPose().position - egoUAV.simGetObjectPose().position
-            
+
             # Return the sample
             return (img, global_offset)
 
@@ -76,7 +76,7 @@ def getLastImageIdx(csv_df: pd.DataFrame) -> int:
 
 def generate_training_data(
         csv_file: str,
-        root_dir: str, 
+        root_dir: str,
         num_samples: int = 10
     ) -> None:
 
@@ -85,7 +85,7 @@ def generate_training_data(
     The leadingUAV may have different poses (random).
     It saves those images into the specified folder (root_dir) and appends to a csv file
     the name of the image and the "ground truth" offset of the leadingUAV from the egoUAV.
-    
+
     The csv should exist and have the first row as:
     filename, x_offset, y_offset, z_offset
 

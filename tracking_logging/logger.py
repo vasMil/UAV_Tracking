@@ -113,15 +113,15 @@ class Logger:
         self.frame_cnt += 1
         self.info_per_frame.append(frame_info)
 
-    def save_frame(self, frame: torch.Tensor, bbox: Optional[BoundingBox], camera_yaw_deg: float):
+    def save_frame(self, frame: torch.Tensor, bbox: Optional[BoundingBox], camera_orient: Tuple[float, float, float]):
         estim_angle = None
         sim_angle = None
         if bbox:
             # Calculate the ground truth angle
             sim_angle = sim_calculate_angle(self.egoUAV, self.leadingUAV)
-            sim_angle = normalize_angle(sim_angle)
+            # sim_angle = normalize_angle(sim_angle)
             # Calculate the estimated angle
-            estim_angle = self.egoUAV.get_yaw_angle_from_bbox(bbox, camera_yaw_deg)
+            estim_angle = self.egoUAV.get_yaw_angle_from_bbox(bbox, camera_orient)
             estim_angle = normalize_angle(estim_angle)
             # Add info on the camera frame
             frame = add_bbox_to_image(frame, bbox)

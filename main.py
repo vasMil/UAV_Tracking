@@ -1,6 +1,7 @@
 import traceback
 
 import airsim
+import numpy as np
 
 from GlobalConfig import GlobalConfig as config
 from models.LeadingUAV import LeadingUAV
@@ -54,10 +55,17 @@ def tracking_at_frequency(sim_fps: int = 60,
     egoUAV.moveByVelocityAsync(0, 0, -5, 10)
     egoUAV.lastAction.join()
     leadingUAV.lastAction.join()
+    # Move to a location with different signs for position values
+    pos = egoUAV.getMultirotorState().kinematics_estimated.position.z_val
+    egoUAV.moveToPositionAsync(-5, -5, pos).join()
+    leadingUAV.moveToPositionAsync(-4.5, -5, pos).join()
     # Wait for the vehicles to stabilize
     import time
     time.sleep(10)
-
+    # Setup the leadingUAV to move on a square path arount the egoUAV
+    pos = egoUAV.getMultirotorState().kinematics_estimated.position
+    leadingUAV.moveOnPathAsync(getSquarePathAroundPoint(pos.x_val, pos.y_val, pos.z_val, coord_frame_offset=leadingUAV.sim_global_coord_frame_origin, square_width=8))
+    
     # Create a Logger
     logger = Logger(egoUAV,
                     leadingUAV,
@@ -84,8 +92,8 @@ def tracking_at_frequency(sim_fps: int = 60,
                 camera_frame = egoUAV._getImage()
 
             # Update the leadingUAV velocity every update_vel_s*sim_fps frames
-            if frame_idx % (leadingUAV_update_vel_interval_s*sim_fps) == 0:
-                leadingUAV.random_move(leadingUAV_update_vel_interval_s)
+            # if frame_idx % (leadingUAV_update_vel_interval_s*sim_fps) == 0:
+                # leadingUAV.random_move(leadingUAV_update_vel_interval_s)
 
             # Get a bounding box and move towards the previous detection
             # this way we also simulate the delay between the capture of the frame

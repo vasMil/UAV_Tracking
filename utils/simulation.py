@@ -35,7 +35,7 @@ def getSquarePathAroundPoint(pointx: float,
                              square_width: float
                         ) -> List[airsim.Vector3r]:
     g_init_point = airsim.Vector3r(pointx + square_width/2, pointy, pointz)
-    init_point = coord_frame_offset - g_init_point
+    init_point = g_init_point - coord_frame_offset
 
     ret_l = [airsim.Vector3r(0, -square_width/2, pointz),
              airsim.Vector3r(-square_width, -square_width/2, pointz),

@@ -257,7 +257,12 @@ class EgoUAV(UAV):
             camera_pitch_roll_yaw_deg = self.getPitchRollYaw()
 
         dist = vector_transformation(*(camera_pitch_roll_yaw_deg), vec=dist) # type: ignore
-        return math.degrees(math.atan(dist[1]/dist[0])) + camera_pitch_roll_yaw_deg[2]
+        deg = math.degrees(math.atan(dist[1]/dist[0]))
+        if deg > 0 and dist[1] < 0:
+            deg -= 180
+        elif deg < 0 and dist[1] > 0:
+            deg += 180
+        return deg
 
     def moveToBoundingBoxAsync(self,
                                bbox: Optional[BoundingBox],
@@ -308,8 +313,12 @@ class EgoUAV(UAV):
                                                  dt,
                                                  current_pos
         )
-        self.lastAction = self.moveByVelocityAsync(*(velocity.squeeze()),
+        self.lastAction = self.moveByVelocityAsync(0, 0, 0,
                                                    duration=dt,
                                                    yaw_mode=airsim.YawMode(False, yaw_deg)
         )
+        # self.lastAction = self.moveByVelocityAsync(*(velocity.squeeze()),
+        #                                            duration=dt,
+        #                                            yaw_mode=airsim.YawMode(False, yaw_deg)
+        # )
         return self.lastAction

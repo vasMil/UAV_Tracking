@@ -6,6 +6,7 @@ from GlobalConfig import GlobalConfig as config
 from models.LeadingUAV import LeadingUAV
 from models.EgoUAV import EgoUAV
 from tracking_logging.logger import Logger, GraphLogs
+from utils.simulation import getSquarePathAroundPoint
 
 # Make sure move_duration exceeds sleep_duration
 # otherwise in each iteration of the game loop the
@@ -42,18 +43,21 @@ def tracking_at_frequency(sim_fps: int = 60,
     client.confirmConnection()
     print(f"Vehicle List: {client.listVehicles()}\n")
     # Reset the position of the UAVs (just to make sure)
-    # client.reset()
+    client.reset()
     # Wait for the takeoff to complete
     leadingUAV = LeadingUAV("LeadingUAV")
-    egoUAV = EgoUAV("EgoUAV", filter_type="KF")
+    egoUAV = EgoUAV("EgoUAV", filter_type="None")
     egoUAV.lastAction.join()
     leadingUAV.lastAction.join()
+    # Move up so you minimize shadows
     leadingUAV.moveByVelocityAsync(0, 0, -5, 10)
     egoUAV.moveByVelocityAsync(0, 0, -5, 10)
     egoUAV.lastAction.join()
     leadingUAV.lastAction.join()
+    # Wait for the vehicles to stabilize
     import time
     time.sleep(10)
+
     # Create a Logger
     logger = Logger(egoUAV,
                     leadingUAV,
@@ -82,7 +86,6 @@ def tracking_at_frequency(sim_fps: int = 60,
             # Update the leadingUAV velocity every update_vel_s*sim_fps frames
             if frame_idx % (leadingUAV_update_vel_interval_s*sim_fps) == 0:
                 leadingUAV.random_move(leadingUAV_update_vel_interval_s)
-                # leadingUAV.moveByVelocityAsync(5,0,0,leadingUAV_update_vel_interval_s)
 
             # Get a bounding box and move towards the previous detection
             # this way we also simulate the delay between the capture of the frame
@@ -109,7 +112,7 @@ def tracking_at_frequency(sim_fps: int = 60,
                 bbox, score = None, None
 
             if frame_idx % round(sim_fps/camera_fps) == 0:
-                logger.save_frame(camera_frame, bbox, orient[2])
+                logger.save_frame(camera_frame, bbox, orient)
 
             # Restart the simulation for a few seconds to match
             # the desired sim_fps
@@ -191,6 +194,8 @@ if __name__ == '__main__':
 
     # Test distance estimation
     # import math
+    # import numpy as np
+    # from utils.operations import vector_transformation
     # egoUAV = EgoUAV("EgoUAV")
     # leadingUAV = LeadingUAV("LeadingUAV")
     # leadingUAV.lastAction.join()
@@ -206,14 +211,11 @@ if __name__ == '__main__':
     # # print(f"\n estim_dist \n {estim_dist}")
     # # print(f"\n true_dist \n {true_dist}")
     # # print(f"\n error \n {error}")
-    # # Place the leadingUAV at an angle > 45 deg from EgoUAV
-    # x_dist = 2
-    # y_dist = x_dist*math.tan(math.radians(-80))
-    # z_dist = leadingUAV.simGetGroundTruthKinematics().position.z_val - 1
-    # target_pos = airsim.Vector3r(x_dist, y_dist, z_dist) + leadingUAV.sim_global_coord_frame_origin - egoUAV.sim_global_coord_frame_origin
-    # leadingUAV.moveToPositionAsync(*target_pos, velocity=5).join()
-    # # Rotate the EgoUAV at an 45deg angle
-    # egoUAV.rotateToYawAsync(-45).join()
+    # # Place the leadingUAV
+    # ego_z = egoUAV.getMultirotorState().kinematics_estimated.position.z_val
+    # leadingUAV.moveToPositionAsync(-3.5, 10, ego_z, velocity=5).join()
+    # # Rotate the EgoUAV to an angle so the leadingUAV is visible
+    # egoUAV.rotateToYawAsync(90).join()
     # # Try to move towards the LeadingUAV
     # bbox, score = egoUAV.net.eval(egoUAV._getImage())
     # # Calculate the magnitude of the distance between the two UAVs
@@ -222,10 +224,15 @@ if __name__ == '__main__':
     #     leadingUAV.disable()
     #     egoUAV.client.reset()
     #     raise Exception("No bbox found")
-    # dist = math.sqrt(x_dist**2 + y_dist**2 + z_dist**2)
-    # input("Press any key to move towards the LeadingUAV")
-    # egoUAV.moveToBoundingBoxAsync(bbox, egoUAV.getPitchRollYaw(), dt = dist/config.uav_velocity).join()
-    # input("Press any key to disable the UAVs and reset")
+    # # Calculate the expected distance
+    # expected_dist = np.array([[0], [10], [0]])
+    # # Estimate the distance
+    # estimated_dist = egoUAV.get_distance_from_bbox(bbox)
+    # print(egoUAV.getPitchRollYaw())
+    # estimated_dist = vector_transformation(*(egoUAV.getPitchRollYaw()), vec=estimated_dist) # type: ignore
+    # # estimated_dist = math.sqrt(estimated_dist[0]**2 + estimated_dist[1]**2 + estimated_dist[2]**2) # type: ignore
+    # print(f"expected_dist: {expected_dist}")
+    # print(f"estimated_dist: {estimated_dist}")
     # egoUAV.disable()
     # leadingUAV.disable()
     # egoUAV.client.reset()

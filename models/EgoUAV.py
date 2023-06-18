@@ -14,7 +14,7 @@ from nets.DetectionNets import Detection_FasterRCNN
 from nets.DetectionNets import Detection_SSD
 from controller.Controller import Controller
 from controller.KalmanFilter import KalmanFilter
-from utils.operations import rotate_to_yaw, rotate3d
+from utils.operations import vector_transformation
 
 class EgoUAV(UAV):
     def __init__(self,
@@ -206,32 +206,6 @@ class EgoUAV(UAV):
 
         raise ValueError("_get_z_distance: Invalid mode!")
 
-    def get_yaw_angle_from_bbox(self,
-                                bbox: Optional[BoundingBox],
-                                camera_yaw_deg: Optional[float] = None
-                            ) -> float:
-        """
-        Wraps self._get_yaw_angle() into a function that will also derive the distances
-        required by this method in order to calculate the yaw angle.
-        Thus it may be used by higher level functions.
-
-        Args:
-        bbox: The bounding box, whose center we are going to use as the point for
-        which we will derive the distance.
-
-        Returns:
-        The yaw angle for the EgoUAV, in it's coordinate frame.
-        Note that this might be different than the coordinate frame defined by the
-        orientation of the camera.
-        """
-        if not bbox:
-            return self.getPitchRollYaw()[2]
-        dist_x = config.focal_length_x * config.pawn_size_y / bbox.width
-        dist_y = self._get_y_distance(dist_x, bbox, "focal")
-        if not camera_yaw_deg:
-            camera_yaw_deg = self.getPitchRollYaw()[2]
-        return math.degrees(math.atan(dist_y/dist_x)) + camera_yaw_deg
-
     def get_distance_from_bbox(self, bbox: Optional[BoundingBox]) -> Optional[np.ndarray]:
         """
         Args:
@@ -255,6 +229,35 @@ class EgoUAV(UAV):
         # from one center to the other.
         dist[0] += (config.camera_offset_x + config.pawn_size_x/2)
         return dist
+
+    def get_yaw_angle_from_bbox(self,
+                                bbox: Optional[BoundingBox],
+                                camera_pitch_roll_yaw_deg: Optional[Tuple[float, float, float]] = None
+                            ) -> float:
+        """
+        Wraps self._get_yaw_angle() into a function that will also derive the distances
+        required by this method in order to calculate the yaw angle.
+        Thus it may be used by higher level functions.
+
+        Args:
+        bbox: The bounding box, whose center we are going to use as the point for
+        which we will derive the distance.
+
+        Returns:
+        The yaw angle for the EgoUAV, in it's coordinate frame.
+        Note that this might be different than the coordinate frame defined by the
+        orientation of the camera.
+        """
+        if not bbox:
+            return self.getPitchRollYaw()[2]
+
+        dist = self.get_distance_from_bbox(bbox)
+
+        if not camera_pitch_roll_yaw_deg:
+            camera_pitch_roll_yaw_deg = self.getPitchRollYaw()
+
+        dist = vector_transformation(*(camera_pitch_roll_yaw_deg), vec=dist) # type: ignore
+        return math.degrees(math.atan(dist[1]/dist[0])) + camera_pitch_roll_yaw_deg[2]
 
     def moveToBoundingBoxAsync(self,
                                bbox: Optional[BoundingBox],
@@ -295,15 +298,18 @@ class EgoUAV(UAV):
             offset = None
 
         pitch_roll_yaw_deg = np.array(orient)
+        current_pos = np.expand_dims(self.simGetGroundTruthKinematics()
+                                     .position
+                                     .to_numpy_array(),
+                                     axis=1
+        )
         velocity, yaw_deg = self.controller.step(offset,
                                                  pitch_roll_yaw_deg,
                                                  dt,
-                                                 np.expand_dims(self.simGetGroundTruthKinematics()
-                                                                .position
-                                                                .to_numpy_array(), axis=1)
-                                            )
+                                                 current_pos
+        )
         self.lastAction = self.moveByVelocityAsync(*(velocity.squeeze()),
                                                    duration=dt,
                                                    yaw_mode=airsim.YawMode(False, yaw_deg)
-                                                )
+        )
         return self.lastAction

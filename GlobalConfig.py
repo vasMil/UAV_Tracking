@@ -16,8 +16,8 @@ class GlobalConfig:
     score_threshold: float = 0.1
 
     # The upper an lower limit for the velocity on each axis of both UAVs
-    max_vx, max_vy, max_vz = 5.,  5,  2.5
-    min_vx, min_vy, min_vz = 0., -5, -2.5
+    max_vx, max_vy, max_vz = 5.,  5,  5
+    min_vx, min_vy, min_vz = 1., -5, -5
 
     # How much time should each move airsim api call last for
     # (ex. moveByVelocityAsync, duration argument)

@@ -1,5 +1,6 @@
 from typing import Optional, Tuple
 import random
+import math
 
 import airsim
 from msgpackrpc.future import Future
@@ -87,7 +88,10 @@ class LeadingUAV(UAV):
         
         # Make sure that the magnitude of the velocity is equal to config.leading_velocity
         assert(abs(velocity_vec.pow(2).sum().sqrt() - config.uav_velocity) < config.eps)
-        self.lastAction = self.moveByVelocityAsync(vx, vy, vz, command_time)
+        self.lastAction = self.moveByVelocityAsync(vx, vy, vz,
+                                                   command_time,
+                                                   yaw_mode=airsim.YawMode(False, math.degrees(math.atan(vy/vx)))
+                                                )
         print(f"{self.name} moveByVelocityAsync: vx = {vx}, vy = {vy}, vz = {vz}")
         return (self.lastAction, velocity_vec)
     

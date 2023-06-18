@@ -6,7 +6,7 @@ import airsim
 
 from GlobalConfig import GlobalConfig as config
 from controller.KalmanFilter import KalmanFilter
-from utils.operations import rotate3d, rotate_to_yaw
+from utils.operations import rotate3d, vector_transformation
 
 class Controller():
     def __init__(self,
@@ -44,10 +44,11 @@ class Controller():
 
         # Add weights to or process the measurement before converting it to a velocity
         if offset is not None and self.filter is None:
-            yaw_deg = pitch_roll_yaw_deg[2] + math.degrees(math.atan(offset[1] / offset[0]))
+            # Calculate the yaw angle at which the body should be rotated at.
+            yaw_deg = math.degrees(math.atan(offset[1] / offset[0])) + pitch_roll_yaw_deg[2]
             # Rotate the offset vector so we may view the camera coordinate system
             # as the EgoUAVs coordinate system.
-            offset = rotate3d(*(pitch_roll_yaw_deg), point=offset)
+            offset = vector_transformation(*(pitch_roll_yaw_deg), vec=offset)
             # Adjust the offset by subtracting the expected amount the EgoUAV moved in the time
             # between the frame capture and the step of the controller
             offset -= np.multiply(self.prev_vel, dt)

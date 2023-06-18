@@ -6,7 +6,7 @@ import airsim
 from msgpackrpc.future import Future
 
 from GlobalConfig import GlobalConfig as config
-from utils.operations import rotate_to_yaw
+
 class UAV():
     """
     The base class for all UAV instances in the simulation:
@@ -87,6 +87,20 @@ class UAV():
                                                           yaw_mode=yaw_mode,
                                                           drivetrain=drivetrain,
                                                           vehicle_name=self.name)
+        return self.lastAction
+
+    def moveOnPathAsync(self,
+                        path,
+                        velocity = config.uav_velocity,
+                        drivetrain: int = airsim.DrivetrainType.MaxDegreeOfFreedom,
+                        yaw_mode = airsim.YawMode()
+                    ) -> Future:
+        self.lastAction = self.client.moveOnPathAsync(path,
+                                                      velocity=velocity,
+                                                      drivetrain=drivetrain,
+                                                      yaw_mode=yaw_mode,
+                                                      vehicle_name=self.name
+                                                )
         return self.lastAction
 
     def getMultirotorState(self) -> airsim.MultirotorState:

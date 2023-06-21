@@ -1,29 +1,13 @@
-from typing import Tuple, Optional, TypedDict
+from typing import Tuple
 
 import torch
 import torchvision.transforms.functional as F
 from PIL import ImageFont, ImageDraw
+import numpy as np
 
 from GlobalConfig import GlobalConfig as config
 from models.BoundingBox import BoundingBox
-
-class InfoForFrame(TypedDict):
-    """
-    A TypedDict that stores information logger wants to display on the frame.
-
-    Attributes:
-    ego_vel: The velocity of the egoUAV, can be obtained from the simulation.
-    ego_vel: The velocity of the leadingUAV, can be obtained from the simulation.
-    estim_angle: Is the estimated angle between the leadingUAV and the egoUAV as
-                 extracted from the size of the bbox inside the frame.
-    actual_angle: The angle between the two UAVs as calculated using simulation
-                  ground truth.
-    """
-    score: Optional[float]
-    ego_vel: Optional[Tuple[float, float, float]]
-    leading_vel: Optional[Tuple[float, float, float]]
-    estim_angle: Optional[float]
-    actual_angle: Optional[float]
+from models.FrameInfo import FrameInfo
 
 def add_bbox_to_image(image: torch.Tensor, bbox: BoundingBox) -> torch.Tensor:
     image = image.clone()
@@ -39,7 +23,7 @@ def add_bbox_to_image(image: torch.Tensor, bbox: BoundingBox) -> torch.Tensor:
     return image
 
 def add_info_to_image(image: torch.Tensor,
-                      infoForFrame: InfoForFrame
+                      frameInfo: FrameInfo
                     ) -> torch.Tensor:
     # Configure font size and spacing between two lines of text
     # as well as default colors
@@ -49,6 +33,7 @@ def add_info_to_image(image: torch.Tensor,
     next_line_offset = torch.tensor([0, font_size + spacing])
     green = (21, 237, 191)
     red = (237, 21, 92)
+    blue = (66, 135, 245)
     default = (0, 0, 0)
     lines_written = 0
 
@@ -68,12 +53,17 @@ def add_info_to_image(image: torch.Tensor,
     draw = ImageDraw.Draw(pil_img)
     font = ImageFont.load_default()
     # Add the text
-    for key in list(infoForFrame.keys()):
-        info = infoForFrame[key]
-        if info is None: continue
+    for key in list(frameInfo.keys()):
+        if key.split('_')[0] == "extra":
+            continue
 
-        if key == "score":
+        info = frameInfo[key]
+        if info == None:
+            color = blue
+        elif key == "bbox_score":
             color = green if info >= config.score_threshold else red
+        elif key.split('_')[0] == "err":
+            color = green if np.linalg.norm(np.array(info)) < 1 else red
         else:
             color = default
 
@@ -83,22 +73,15 @@ def add_info_to_image(image: torch.Tensor,
             info = temp[:-1]
         elif isinstance(info, float):
             info = f"{info:.2f}"
+        elif info is None:
+            info = "None"
         else:
             raise Exception(f"Unexpected type: {type(info)}, for {key}, in infoForFrame object")
         
         draw.text(getNextLinePos(),
-                  f"{key:13s}: {info:15s}",
+                  f"{key:15s}: {info:15s}",
                   font=font,
                   fill=color
-                )
-
-    # Append an extra line for the error between the two angles
-    if (infoForFrame["actual_angle"] != None) and (infoForFrame["estim_angle"] != None):
-        angle_error = infoForFrame["actual_angle"] - infoForFrame["estim_angle"]
-        draw.text(getNextLinePos(),
-                  f"error: {angle_error:.2f}",
-                  font=font,
-                  fill=green if abs(angle_error) < 1 else red
                 )
 
     return F.to_tensor(pil_img)

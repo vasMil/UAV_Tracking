@@ -1,5 +1,5 @@
 import math
-from typing import Optional
+from typing import Optional, Literal
 
 class GlobalConfig:
     """ Contains all the configuration options used in this project """
@@ -16,8 +16,8 @@ class GlobalConfig:
     score_threshold: float = 0.1
 
     # The upper an lower limit for the velocity on each axis of both UAVs
-    max_vx, max_vy, max_vz = 5.,  5,  5
-    min_vx, min_vy, min_vz = 1., -5, -5
+    max_vx, max_vy, max_vz = 5.,  5,  2.5
+    min_vx, min_vy, min_vz = 1., -5, -2.5
 
     # How much time should each move airsim api call last for
     # (ex. moveByVelocityAsync, duration argument)
@@ -120,3 +120,12 @@ class GlobalConfig:
     # of the yaw_mode, in order to rotate our camera and look at all times
     # at the LeadingUAV.
     weight_vel_x, weight_vel_y, weight_vel_z = 1, 1, 2
+
+    # Logger settings
+    sim_fps = 60
+    simulation_time_s = 10
+    camera_fps = 30
+    infer_freq_Hz = 30
+    filter_freq_Hz = 30
+    filter_type: Literal["None", "KF"] = "None"
+    leadingUAV_update_vel_interval_s = 5

@@ -23,7 +23,7 @@ class LeadingUAV(UAV):
             seed: Optional[int] = None,
             genmode: bool = False
         ) -> None:
-        super().__init__(name, port, genmode)
+        super().__init__(name, port, genmode=genmode)
         # Configure random state
         self._randomState = RandomState(seed)
 

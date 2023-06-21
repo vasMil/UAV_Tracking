@@ -1,4 +1,5 @@
-from typing import List, TypedDict, Tuple, Optional
+from typing import List, Optional
+from operator import itemgetter
 import datetime, time
 import os
 import math
@@ -8,29 +9,20 @@ from torchvision.utils import save_image
 import pickle
 import matplotlib.pyplot as plt
 import cv2
+import numpy as np
 
 from models.EgoUAV import EgoUAV
 from models.LeadingUAV import LeadingUAV
 from models.BoundingBox import BoundingBox
 from GlobalConfig import GlobalConfig as config
-from utils.image import InfoForFrame, add_bbox_to_image, add_info_to_image, increase_resolution
+from utils.image import add_bbox_to_image, add_info_to_image, increase_resolution
 from utils.simulation import sim_calculate_angle
-from utils.operations import normalize_angle
+from models.FrameInfo import FrameInfo, EstimatedFrameInfo, GroundTruthFrameInfo
 
 __all__ = (
     "Logger",
     "GraphLogs",
 )
-
-class FrameInfo(TypedDict):
-    frame_idx: int
-    egoUAV_position: Tuple[float, float, float]
-    egoUAV_orientation_quartanion: Tuple[float, float, float, float]
-    egoUAV_velocity: Tuple[float, float, float]
-    leadingUAV_position: Tuple[float, float, float]
-    leadingUAV_orientation_quartanion: Tuple[float, float, float, float]
-    leadingUAV_velocity: Tuple[float, float, float]
-    still_tracking: bool
 
 class Logger:
     """
@@ -62,14 +54,13 @@ class Logger:
     def __init__(self,
                  egoUAV: EgoUAV,
                  leadingUAV: LeadingUAV,
-                 sim_fps: int,
-                 simulation_time_s: int,
-                 camera_fps: int,
-                 infer_freq_Hz: int,
-                 leadingUAV_update_vel_interval_s: int
+                 sim_fps: int = config.sim_fps,
+                 simulation_time_s: int = config.simulation_time_s,
+                 camera_fps: int = config.camera_fps,
+                 infer_freq_Hz: int = config.infer_freq_Hz,
+                 leadingUAV_update_vel_interval_s: int = config.leadingUAV_update_vel_interval_s
             ) -> None:
-        dt = datetime.datetime.now()
-
+        # Settings
         self.egoUAV = egoUAV
         self.leadingUAV = leadingUAV
         self.sim_fps = sim_fps
@@ -77,18 +68,28 @@ class Logger:
         self.camera_fps = camera_fps
         self.infer_freq_Hz = infer_freq_Hz
         self.leadingUAV_update_vel_interval_s = leadingUAV_update_vel_interval_s
+        self.image_res_incr_factor = 3
 
-        self.parent_folder = f"recordings/{dt.year}{dt.month}{dt.day}_{dt.hour}{dt.minute}{dt.second}"
+        # Folder and File namse
+        dt = datetime.datetime.now()
+        self.parent_folder = f"recordings/{dt.year}{dt.month:02d}{dt.day:02d}_{dt.hour:02d}{dt.minute:02d}{dt.second:02d}"
         self.images_path = f"{self.parent_folder}/images"
         self.logfile = f"{self.parent_folder}/log.pkl"
         self.setup_file = f"{self.parent_folder}/setup.txt"
         self.video_path = f"{self.parent_folder}/output.mp4"
         os.makedirs(self.images_path)
-        self.info_per_frame: List[FrameInfo] = []
-        self.frame_cnt: int = 0
-        self.image_res_incr_factor = 2
 
-    def step(self, still_tracking: bool):
+        # Lists to preserve information in
+        self.info_per_frame: List[GroundTruthFrameInfo] = []
+        self.frames: List[torch.Tensor] = []
+        self.updated_info_per_frame: List[FrameInfo] = []
+
+        # Counters
+        self.frame_cnt: int = 0
+        self.next_frame_idx_to_save: int = 0
+        self.last_frames_with_bbox_idx: List[int] = []
+
+    def create_frame(self, frame: torch.Tensor, is_bbox_frame: bool):
         # Collect data from simulation to variables
         ego_pos = self.egoUAV.simGetObjectPose().position
         ego_vel = self.egoUAV.simGetGroundTruthKinematics().linear_velocity
@@ -97,47 +98,89 @@ class Logger:
         lead_vel = self.leadingUAV.simGetGroundTruthKinematics().linear_velocity
         lead_quart = self.leadingUAV.simGetObjectPose().orientation
 
-        # Organize the variables above into a FrameInfo
-        frame_info: FrameInfo = {
+        # Organize the variables above into a GroundTruthFrameInfo
+        frame_info: GroundTruthFrameInfo = {
             "frame_idx": self.frame_cnt,
-            "still_tracking": still_tracking,
+            "timestamp": time.time_ns(),
             "egoUAV_position": (ego_pos.x_val, ego_pos.y_val, ego_pos.z_val),
             "egoUAV_orientation_quartanion": (ego_quart.x_val, ego_quart.y_val, ego_quart.z_val, ego_quart.w_val),
             "egoUAV_velocity": (ego_vel.x_val, ego_vel.y_val, ego_vel.z_val),
             "leadingUAV_position": (lead_pos.x_val, lead_pos.y_val, lead_pos.z_val),
             "leadingUAV_orientation_quartanion": (lead_quart.x_val, lead_quart.y_val, lead_quart.z_val, lead_quart.w_val),
             "leadingUAV_velocity": (lead_vel.x_val, lead_vel.y_val, lead_vel.z_val),
+            "angle_deg": sim_calculate_angle(self.egoUAV, self.leadingUAV)
         }
 
         # Update the Logger state
-        self.frame_cnt += 1
+        if is_bbox_frame:
+            self.last_frames_with_bbox_idx.append(self.frame_cnt)
         self.info_per_frame.append(frame_info)
+        self.frames.append(frame)
+        self.frame_cnt += 1
 
-    def save_frame(self, frame: torch.Tensor, bbox: Optional[BoundingBox], camera_orient: Tuple[float, float, float]):
-        estim_angle = None
-        sim_angle = None
+    def update_frame(self,
+                     bbox: Optional[BoundingBox],
+                     est_frame_info: EstimatedFrameInfo
+                ):
+        g_frame_idx = self.last_frames_with_bbox_idx.pop(0)
+        frame_list_idx = g_frame_idx - self.next_frame_idx_to_save
+        frame = self.frames[frame_list_idx]
+        self.frames[frame_list_idx] = self.draw_frame(frame, bbox, self.info_per_frame[g_frame_idx], est_frame_info)
+
+    def draw_frame(self,
+                   frame: torch.Tensor,
+                   bbox: Optional[BoundingBox],
+                   sim_frame_info: GroundTruthFrameInfo,
+                   est_frame_info: EstimatedFrameInfo = {
+                       "egoUAV_target_velocity": None,
+                       "angle_deg": None,
+                       "leadingUAV_position": None,
+                       "leadingUAV_velocity": None,
+                       "egoUAV_position": None,
+                       "still_tracking": None
+                    }
+                ) -> torch.Tensor:
         if bbox:
-            # Calculate the ground truth angle
-            sim_angle = sim_calculate_angle(self.egoUAV, self.leadingUAV)
-            # sim_angle = normalize_angle(sim_angle)
-            # Calculate the estimated angle
-            estim_angle = self.egoUAV.get_yaw_angle_from_bbox(bbox, camera_orient)
-            estim_angle = normalize_angle(estim_angle)
             # Add info on the camera frame
             frame = add_bbox_to_image(frame, bbox)
 
         frame = increase_resolution(frame, self.image_res_incr_factor)
-        # Populate an InfoForFrame instance and add it's information to the frame
-        last_frameInfo = self.info_per_frame[-1]
-        infoForFrame: InfoForFrame = {
-            "score": bbox.score if bbox else None,
-            "ego_vel": last_frameInfo["egoUAV_velocity"],
-            "leading_vel": last_frameInfo["leadingUAV_velocity"],
-            "estim_angle": estim_angle,
-            "actual_angle": sim_angle
-        }
-        frame = add_info_to_image(frame, infoForFrame)
-        save_image(frame, f"{self.images_path}/img_EgoUAV_{time.time_ns()}.png")
+
+        # Merge all info into a FrameInfo object and append the information onto the frame
+        frame_info = self.merge_to_FrameInfo(bbox=bbox, sim_info=sim_frame_info, est_info=est_frame_info)
+        frame = add_info_to_image(frame, frame_info)
+
+        # Add the updated information for the frame to a list
+        # I do not really worry about the order of the frame_info objects,
+        # since they preserve their global frame index in the field "extra_frame_idx",
+        # we may sort them later
+        self.updated_info_per_frame.append(frame_info)
+        return frame
+
+    def save_frames(self, finalize: bool = False):
+        idx = 0
+        for idx, frame in enumerate(self.frames):
+            # Calculate the global frame index
+            info_idx = self.next_frame_idx_to_save + idx
+            # Do not save frames that will be updated in the future
+            # these are the one that will include the next bbox and the frames
+            # after that.
+            if not finalize and info_idx >= self.last_frames_with_bbox_idx[0]:
+                break
+            # Make sure that all frames you save have the desired resolution
+            if frame.size() == torch.Size([3, config.img_height, config.img_width]):
+                frame = self.draw_frame(frame, None, self.info_per_frame[info_idx])
+            elif frame.size() != torch.Size([3,
+                                             self.image_res_incr_factor*config.img_height,
+                                             self.image_res_incr_factor*config.img_width
+                                           ]):
+                raise Exception("Unexpected frame size!")
+            save_image(frame, f"{self.images_path}/img_EgoUAV_{self.info_per_frame[info_idx]['timestamp']}.png")
+        
+        # Delete the frames you saved
+        del self.frames[0:idx]
+        # Update the index of the next frame you want to save
+        self.next_frame_idx_to_save += idx
 
     def write_setup(self):
         with open(self.setup_file, 'w') as f:
@@ -167,8 +210,13 @@ class Logger:
             )
 
     def dump_logs(self):
+        # source: https://stackoverflow.com/questions/72899/how-to-sort-a-list-of-dictionaries-by-a-value-of-the-dictionary-in-python
+        self.updated_info_per_frame = sorted(self.updated_info_per_frame,
+                                             key=itemgetter("extra_frame_idx"),
+                                             reverse=False
+                                        )
         with open(self.logfile, 'wb') as f:
-            pickle.dump(self.info_per_frame, f)
+            pickle.dump(self.updated_info_per_frame, f)
 
     def write_video(self):
         # Load images into a list
@@ -191,32 +239,96 @@ class Logger:
         video.release()
         cv2.destroyAllWindows()
 
+    def merge_to_FrameInfo(self,
+                           bbox: Optional[BoundingBox],
+                           sim_info: GroundTruthFrameInfo,
+                           est_info: EstimatedFrameInfo
+                        ) -> FrameInfo:
+        err_lead_pos = None if est_info["leadingUAV_position"] is None \
+                            else tuple(np.array(sim_info["leadingUAV_position"]) -
+                                       np.array(est_info["leadingUAV_position"])
+                                    )
+        err_lead_vel = None if est_info["leadingUAV_velocity"] is None \
+                            else tuple(np.array(sim_info["leadingUAV_velocity"]) -
+                                       np.array(est_info["leadingUAV_velocity"])
+                                    )
+        err_ego_pos = None if est_info["egoUAV_position"] is None \
+                           else tuple(np.array(sim_info["egoUAV_position"]) - 
+                                      np.array(est_info["egoUAV_position"])
+                                    )
+        err_ego_vel = None if est_info["egoUAV_target_velocity"] is None \
+                           else tuple(np.array(sim_info["egoUAV_velocity"]) - 
+                                      np.array(est_info["egoUAV_target_velocity"]))
+        err_angle = None if est_info["angle_deg"] is None \
+                         else sim_info["angle_deg"] - est_info["angle_deg"]
+        
+        frameInfo: FrameInfo = {
+            "bbox_score": None if not bbox else bbox.score,
+            "sim_lead_pos": sim_info["leadingUAV_position"],
+            "est_lead_pos": est_info["leadingUAV_position"],
+            "err_lead_pos": err_lead_pos,
+
+            "sim_ego_pos": sim_info["egoUAV_position"],
+            "est_ego_pos": est_info["egoUAV_position"],
+            "err_ego_pos": err_ego_pos,
+
+            "sim_lead_vel": sim_info["leadingUAV_velocity"],
+            "est_lead_vel": est_info["leadingUAV_velocity"],
+            "err_lead_vel": err_lead_vel,
+
+            "sim_ego_vel": sim_info["egoUAV_velocity"],
+            "target_ego_vel": est_info["egoUAV_target_velocity"],
+            "err_ego_vel": err_ego_vel,
+
+            "sim_angle_deg": sim_info["angle_deg"],
+            "est_angle_deg": est_info["angle_deg"],
+            "err_angle": err_angle,
+
+            "extra_frame_idx": sim_info["frame_idx"],
+            "extra_timestamp": sim_info["timestamp"],
+            "extra_leading_orientation_quartanion": sim_info["leadingUAV_orientation_quartanion"],
+            "extra_ego_orientation_quartanion": sim_info["egoUAV_orientation_quartanion"],
+            "extra_still_tracking": est_info["still_tracking"]
+        }
+        return frameInfo
+
 class GraphLogs:
     def __init__(self,
                  pickle_file: Optional[str] = None,
-                 info_per_frame: Optional[List[FrameInfo]] = None
+                 frame_info: Optional[List[FrameInfo]] = None
             ) -> None:
-        if not pickle_file or info_per_frame:
+        if not pickle_file or frame_info:
             raise Exception("One of two arguments must be not none")
-        if pickle_file and info_per_frame:
+        if pickle_file and frame_info:
             raise Exception("You should only pass one of the two arguments")
 
         if pickle_file:
             with open(pickle_file, "rb") as f:
-                self.info_per_frame: List[FrameInfo] = pickle.load(f)
-        elif info_per_frame:
-            self.info_per_frame = info_per_frame
+                self.frame_info: List[FrameInfo] = pickle.load(f)
+        elif frame_info:
+            self.frame_info = frame_info
 
-    def graph_distance(self, sim_fps: Optional[int] = None):
+    def graph_distance(self, sim_fps: int, filename: str):
         # Calculate the distance between the two UAVs for each frame
-        dist = []
-        for info in self.info_per_frame:
-            ego_pos = info["egoUAV_position"]
-            lead_pos = info["leadingUAV_position"]
-            dist.append(
-                math.sqrt((ego_pos[0] - lead_pos[0])**2 + (ego_pos[1] - lead_pos[1])**2 + (ego_pos[2] - lead_pos[2])**2)
-            )
-        mult_factor = 1 if not sim_fps else (1/sim_fps)
-        x_axis = [x*mult_factor for x in range(0, len(self.info_per_frame))]
-        plt.plot(x_axis, dist)
-        plt.show()
+        sim_dist = []
+        est_dist = []
+        for info in self.frame_info:
+            ego_pos = np.array(info["sim_ego_pos"])
+            lead_pos = np.array(info["sim_lead_pos"])
+            sim_dist.append(np.linalg.norm(lead_pos - ego_pos))
+
+        for info in self.frame_info:
+            if info["est_ego_pos"] is None or info["est_lead_pos"] is None:
+                est_dist.clear()
+                break
+            ego_pos = np.array(info["est_ego_pos"])
+            lead_pos = np.array(info["est_lead_pos"])
+            est_dist.append(np.linalg.norm(lead_pos - ego_pos))
+
+        mult_factor = 1/sim_fps
+        x_axis = [x*mult_factor for x in range(0, len(self.frame_info))]
+        plt.plot(x_axis, sim_dist, color="blue", label="sim_dist")
+        if est_dist:
+            plt.plot(x_axis, est_dist, color="red", label="est_dist")
+        plt.legend()
+        plt.savefig(filename)

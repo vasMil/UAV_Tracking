@@ -6,7 +6,8 @@ import airsim
 
 from GlobalConfig import GlobalConfig as config
 from controller.KalmanFilter import KalmanFilter
-from utils.operations import rotate3d, vector_transformation
+from utils.operations import vector_transformation
+from models.FrameInfo import EstimatedFrameInfo
 
 class Controller():
     def __init__(self,
@@ -14,9 +15,7 @@ class Controller():
             ) -> None:
         self.filter = None
         if filter_type == "KF":
-            client = airsim.MultirotorClient()
-            gt_pos = client.simGetGroundTruthKinematics(vehicle_name="LeadingUAV").position
-            X_init = np.zeros([6, 1]); X_init[0, 0] = gt_pos.x_val; X_init[1, 0] = gt_pos.y_val; X_init[2, 0] = gt_pos.z_val
+            X_init = np.zeros([6, 1]); X_init[0, 0] = 3.5; X_init[1, 0] = 0; X_init[2, 0] = -50
             P_init = np.zeros([6, 6]); P_init[3, 3] = 1; P_init[4, 4] = 1; P_init[5, 5] = 1
             R = np.array([[30.45326648, -3.27817233, -5.51873313],
                           [-3.27817233, 33.64031622,  1.07687012],
@@ -27,10 +26,10 @@ class Controller():
 
     def step(self,
              offset: Optional[np.ndarray],
-             pitch_roll_yaw_deg: np.ndarray,
+             pitch_roll_yaw_deg: Optional[np.ndarray],
              dt: float,
              ego_pos: Optional[np.ndarray] = None
-        ) -> Tuple[np.ndarray, float]:
+        ) -> Tuple[np.ndarray, float, EstimatedFrameInfo]:
         """
         Calculates a velocity, using the target velocity found in config and
         the offset from the target position passed as argument.
@@ -39,33 +38,53 @@ class Controller():
         offset: A 3x1 column vector with the offset from EgoUAV to LeadingUAV.
         dt: The time interval between two consecutive calls.
         """
-        if offset is None and self.filter is None:
-            return self.prev_vel, self.prev_yaw
+        est_frame_info: EstimatedFrameInfo = {
+            "egoUAV_target_velocity": None,
+            "angle_deg": None,
+            "leadingUAV_position": None,
+            "leadingUAV_velocity": None,
+            "egoUAV_position": None,
+            "still_tracking": None
+        }
 
-        # Add weights to or process the measurement before converting it to a velocity
-        if offset is not None and self.filter is None:
-            # Calculate the yaw angle at which the body should be rotated at.
-            yaw_deg = math.degrees(math.atan(offset[1] / offset[0])) + pitch_roll_yaw_deg[2]
-            # Rotate the offset vector so we may view the camera coordinate system
-            # as the EgoUAVs coordinate system.
-            offset = vector_transformation(*(pitch_roll_yaw_deg), vec=offset)
-            # Adjust the offset by subtracting the expected amount the EgoUAV moved in the time
-            # between the frame capture and the step of the controller
-            offset -= np.multiply(self.prev_vel, dt)
-        elif isinstance(self.filter, KalmanFilter) and ego_pos is not None:
+        if ego_pos is not None:
             ego_pos -= self.prev_vel*dt
+            est_frame_info["egoUAV_position"] = tuple(ego_pos.squeeze())
+        
+        if (offset is not None and
+            pitch_roll_yaw_deg is not None
+        ):
+            # Transform the vector from the camera axis to those of the EgoUAV
+            # coordinate frame
+            offset = vector_transformation(*(pitch_roll_yaw_deg), vec=offset)
+        elif offset is None and self.filter is None:
+            # est_frame_info["egoUAV_target_velocity"] = tuple(self.prev_vel.squeeze())
+            # est_frame_info["angle_deg"] = self.prev_yaw
+            return self.prev_vel, self.prev_yaw, est_frame_info
+        
+        if isinstance(self.filter, KalmanFilter) and ego_pos is not None:
             if offset is None:
                 leading_state = self.filter.step(None, dt)
             else:
-                offset = rotate3d(*(np.multiply(pitch_roll_yaw_deg, -1)), point=offset)
                 leading_pos = ego_pos + offset
                 leading_state = self.filter.step(np.pad(leading_pos, ((0,3),(0,0))), dt)
 
             leading_pos, leading_vel = np.vsplit(leading_state, 2)
             offset = leading_pos - ego_pos
-            yaw_deg = math.degrees(math.atan(offset[1] / offset[0]))
+            est_frame_info["leadingUAV_position"] = tuple(leading_pos.squeeze())
+            est_frame_info["leadingUAV_velocity"] = tuple(leading_vel.squeeze())
+        elif isinstance(self.filter, KalmanFilter) and ego_pos is None:
+            raise AttributeError("Estimation of ego position is required when using a KF")
+        elif self.filter is None and offset is not None:
+            est_frame_info["leadingUAV_position"] = tuple((ego_pos + offset).squeeze())
+        elif self.filter is not None and not isinstance(self.filter, KalmanFilter):
+            raise AttributeError("Unexpected filter")
         else:
-            raise AttributeError("Filter type is wrong or ego_pos is not provided!")
+            raise Exception("Impossible path!") # Required for typing
+
+        # Calculate the yaw angle at which the body should be rotated at.
+        yaw_deg = math.degrees(math.atan(offset[1] / offset[0]))
+        est_frame_info["angle_deg"] = yaw_deg
 
         # Multiply with the weights
         offset = np.multiply(offset, np.array(
@@ -80,6 +99,9 @@ class Controller():
         else:
             velocity = np.zeros([3,1])
 
+        est_frame_info["egoUAV_target_velocity"] = tuple(velocity.squeeze())
+
+        # Update previous values
         self.prev_vel = velocity
         self.prev_yaw = yaw_deg
-        return velocity, yaw_deg
+        return velocity, yaw_deg, est_frame_info

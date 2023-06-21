@@ -15,6 +15,7 @@ from nets.DetectionNets import Detection_SSD
 from controller.Controller import Controller
 from controller.KalmanFilter import KalmanFilter
 from utils.operations import vector_transformation
+from models.FrameInfo import EstimatedFrameInfo
 
 class EgoUAV(UAV):
     def __init__(self,
@@ -32,10 +33,6 @@ class EgoUAV(UAV):
         self.net = Detection_SSD()
         self.net.load("nets/checkpoints/ssd300.checkpoint")
         self.controller = Controller(filter_type)
-        self.prev_frame = None
-        self.prev_orient = None
-        self.curr_frame = None
-        self.curr_orient = None
 
     def _getImage(self, view_mode: bool = False) -> torch.Tensor:
         """
@@ -268,7 +265,7 @@ class EgoUAV(UAV):
                                bbox: Optional[BoundingBox],
                                orient: Tuple[float, float, float],
                                dt: float
-                            ) -> Future:
+                            ) -> Tuple[Future, EstimatedFrameInfo]:
         """
         Given a BoundingBox object, calculate its relative distance
         (offset) on the x axis, using the focal length.
@@ -303,22 +300,35 @@ class EgoUAV(UAV):
             offset = None
 
         pitch_roll_yaw_deg = np.array(orient)
-        current_pos = np.expand_dims(self.simGetGroundTruthKinematics()
+        current_pos = self.getMultirotorState().kinematics_estimated.position
+        current_pos = np.expand_dims(current_pos.to_numpy_array(), axis=1)
+        velocity, yaw_deg, est_frame_info = self.controller.step(offset,
+                                                                 pitch_roll_yaw_deg,
+                                                                 dt,
+                                                                 current_pos
+        )
+        self.lastAction = self.moveByVelocityAsync(*(velocity.squeeze()),
+                                                   duration=dt,
+                                                   yaw_mode=airsim.YawMode(False, yaw_deg)
+        )
+        est_frame_info["still_tracking"] = (bbox is not None)
+        return self.lastAction, est_frame_info
+
+    def advanceUsingFilter(self, dt: float) -> Tuple[Future, EstimatedFrameInfo]:
+        if not isinstance(self.controller.filter, KalmanFilter):
+            raise Exception(f"There is no KF to support advanceUsingFilter: self.controller.filter is of type {type(self.controller.filter)}")
+        current_pos = np.expand_dims(self.getMultirotorState()
+                                     .kinematics_estimated
                                      .position
                                      .to_numpy_array(),
                                      axis=1
         )
-        velocity, yaw_deg = self.controller.step(offset,
-                                                 pitch_roll_yaw_deg,
-                                                 dt,
-                                                 current_pos
-        )
-        self.lastAction = self.moveByVelocityAsync(0, 0, 0,
+
+        velocity, yaw_deg, est_frame_info = self.controller.step(None, None, dt, current_pos)
+
+        self.lastAction = self.moveByVelocityAsync(*(velocity.squeeze()),
                                                    duration=dt,
                                                    yaw_mode=airsim.YawMode(False, yaw_deg)
         )
-        # self.lastAction = self.moveByVelocityAsync(*(velocity.squeeze()),
-        #                                            duration=dt,
-        #                                            yaw_mode=airsim.YawMode(False, yaw_deg)
-        # )
-        return self.lastAction
+        
+        return self.lastAction, est_frame_info

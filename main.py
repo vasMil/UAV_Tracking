@@ -1,33 +1,24 @@
 import traceback
+import os
+import time
 
 import airsim
-import numpy as np
 
 from GlobalConfig import GlobalConfig as config
 from models.LeadingUAV import LeadingUAV
 from models.EgoUAV import EgoUAV
 from tracking_logging.logger import Logger, GraphLogs
-from utils.simulation import getSquarePathAroundPoint
 
-# Make sure move_duration exceeds sleep_duration
-# otherwise in each iteration of the game loop the
-# leading vehicle will "run out of moves" before the next iteration
-assert(config.move_duration > config.sleep_const)
-
-def tracking_at_frequency() -> None:
+def tracking_at_frequency() -> Logger:
     """
-    Runs AirSim frame by frame at a framerate of sim_fps.
+    Runs AirSim step by step at a framerate of sim_fps.
     This way you may simulate any given inference_frequency, even if your
     hardware is slow.
+    
+    This function can be configured from constants set in GlobalConfig.
 
-    Args:
-    - sim_fps: The frames per second that the simulation runs at (cannot be 
-    arbitrarily small).
-    - simulation_time_s: The amount of simulation seconds should this run for.
-    - camera_fps: EgoUAV's camera frame rate
-    - infer_freq_Hz: The frequency at which EgoUAV's network inference operates at.
-    - leadingUAV_update_vel_interval_s: How many simulation seconds between consecutive
-    leadingUAV.random_move() calls.
+    Returns:
+    A Logger instance that logged info at camera_fps
     """
     if config.sim_fps < config.camera_fps:
         raise Exception("sim_fps cannot be less than camera_fps")
@@ -41,7 +32,7 @@ def tracking_at_frequency() -> None:
     client.confirmConnection()
     print(f"Vehicle List: {client.listVehicles()}\n")
     # Reset the position of the UAVs (just to make sure)
-    # client.reset()
+    client.reset()
     # Wait for the takeoff to complete
     leadingUAV = LeadingUAV("LeadingUAV")
     egoUAV = EgoUAV("EgoUAV", filter_type=config.filter_type)
@@ -53,7 +44,6 @@ def tracking_at_frequency() -> None:
     egoUAV.lastAction.join()
     leadingUAV.lastAction.join()
     # Wait for the vehicles to stabilize
-    import time
     time.sleep(10)
 
     # Create a Logger
@@ -74,13 +64,13 @@ def tracking_at_frequency() -> None:
         bbox, prev_bbox = None, None
         score, prev_score = None, None
         orient, prev_orient = egoUAV.getPitchRollYaw(), egoUAV.getPitchRollYaw()
-        
+        camera_frame_idx, prev_camera_frame_idx = -1, -1
+
         if config.filter_type == "KF":
             filter_freq_Hz = config.filter_freq_Hz
         else:
             filter_freq_Hz = config.infer_freq_Hz
 
-        vel = airsim.Vector3r(3.536, 3.536, 0)
         for frame_idx in range(config.simulation_time_s*config.sim_fps):
             print(f"\nFRAME: {frame_idx}")
 
@@ -89,12 +79,11 @@ def tracking_at_frequency() -> None:
                 logger.create_frame(camera_frame,
                                     is_bbox_frame=(frame_idx % round(config.sim_fps/config.infer_freq_Hz) == 0)
                 )
+                camera_frame_idx += 1
 
             # Update the leadingUAV velocity every update_vel_s*sim_fps frames
             if frame_idx % (config.leadingUAV_update_vel_interval_s*config.sim_fps) == 0:
-                # leadingUAV.random_move(config.leadingUAV_update_vel_interval_s)
-                leadingUAV.moveByVelocityAsync(*vel, duration=config.leadingUAV_update_vel_interval_s)
-                vel.y_val *= -1
+                leadingUAV.random_move(config.leadingUAV_update_vel_interval_s)
 
             # Get a bounding box and move towards the previous detection
             # this way we also simulate the delay between the capture of the frame
@@ -106,41 +95,45 @@ def tracking_at_frequency() -> None:
                 bbox, score = egoUAV.net.eval(camera_frame, 0)
                 orient = egoUAV.getPitchRollYaw()
 
-                # Perform the movement for the previous detection
-                _, est_frame_info = egoUAV.moveToBoundingBoxAsync(prev_bbox, prev_orient, dt=(1/filter_freq_Hz))
-                if prev_score and prev_score >= config.score_threshold:
-                    print(f"UAV detected {prev_score}, moving towards it...")
-                else:
-                    print("Lost tracking!!!")
-                
                 # There is no way we have a bbox when just inserting the first frame to the logger
                 if frame_idx != 0:
+                    # Perform the movement for the previous detection
+                    _, est_frame_info = egoUAV.moveToBoundingBoxAsync(prev_bbox, prev_orient, dt=(1/filter_freq_Hz))
+                    if prev_score and prev_score >= config.score_threshold:
+                        print(f"UAV detected {prev_score}, moving towards it...")
+                    else:
+                        print("Lost tracking!!!")
+                
                     # Update the frame in the logger
-                    logger.update_frame(bbox=prev_bbox, est_frame_info=est_frame_info)
+                    logger.update_frame(bbox=prev_bbox, est_frame_info=est_frame_info, camera_frame_idx=prev_camera_frame_idx)
                     logger.save_frames()
 
                 # Update
                 prev_bbox = bbox
                 prev_score = score
                 prev_orient = orient
+                prev_camera_frame_idx = camera_frame_idx
 
             # If we haven't yet decided on the movement, due to the inference frequency limitation
             # and we use a Kalman Filter, check if it is time to advance the KF.
             elif config.filter_type == "KF" and frame_idx % round(config.sim_fps/filter_freq_Hz):
                 egoUAV.advanceUsingFilter(dt=(1/filter_freq_Hz))
 
-            # Restart the simulation for a few seconds to match
+            # Continue the simulation for a few seconds to match
             # the desired sim_fps
             client.simContinueForTime(1/config.sim_fps)
+
         # Save the last evaluated bbox
         _, est_frame_info = egoUAV.moveToBoundingBoxAsync(bbox, orient, dt=(1/filter_freq_Hz))
-        logger.update_frame(bbox, est_frame_info)
+        logger.update_frame(bbox, est_frame_info, camera_frame_idx)
         # Save any leftorver frames
         logger.save_frames(finalize=True)
+
     except Exception:
         print("There was an error, writing setup file and releasing AirSim...")
         print("\n" + "*"*10 + " THE ERROR MESSAGE " + "*"*10)
         traceback.print_exc()
+
     finally:
         # Write a setup.txt file containing all the important configuration options used for
         # this run
@@ -155,6 +148,8 @@ def tracking_at_frequency() -> None:
         egoUAV.disable()
         leadingUAV.disable()
         client.reset()
+
+        return logger
 
 if __name__ == '__main__':
     # Generate data
@@ -179,9 +174,15 @@ if __name__ == '__main__':
     #     ssd.save(f"nets/checkpoints/ssd{i+10-1}.checkpoint")
 
     # Run the simulation
-    # tracking_at_frequency()
-    gl = GraphLogs(pickle_file="./recordings/20230621_234607/log.pkl")
-    gl.graph_distance(sim_fps=60, filename="./recordings/20230621_234607/dist_graph.png")
+    logger = tracking_at_frequency()
+    gl = GraphLogs(frame_info=logger.updated_info_per_frame)
+    gl.graph_distance(fps=config.camera_fps, filename=(os.path.join(logger.parent_folder, "dist_graph.png")))
+    gl.graph_velocities(fps=config.camera_fps, filename=(os.path.join(logger.parent_folder, "vel_graph.png")))
+    gl.graph_positions(fps=config.camera_fps, filename=(os.path.join(logger.parent_folder, "pos_graph.png")))
+    gl.graph_velocity_on_axis(fps=config.camera_fps, filename=(os.path.join(logger.parent_folder, "xvel_graph.png")), axis="x", vehicle_name="lead")
+    gl.graph_velocity_on_axis(fps=config.camera_fps, filename=(os.path.join(logger.parent_folder, "yvel_graph.png")), axis="y", vehicle_name="lead")
+    gl.graph_velocity_on_axis(fps=config.camera_fps, filename=(os.path.join(logger.parent_folder, "zvel_graph.png")), axis="z", vehicle_name="lead")
+
     # Run inference frequency benchmark
     # from nets.DetectionNets import Detection_SSD, Detection_FasterRCNN
     # ssd = Detection_SSD(root_test_dir="/home/airsim_user/UAV_Tracking/data/empty_map/test",
@@ -194,16 +195,6 @@ if __name__ == '__main__':
     # rcnn.load("nets/checkpoints/rcnn120.checkpoint")
     # rcnn.plot_losses()
     # rcnn.get_inference_frequency(num_tests=10, warmup=2, cudnn_benchmark=True)
-
-    # Test the Kalman filter
-    # import numpy as np
-    # from controller.KalmanFilter import KalmanFilter
-    # X_init = np.zeros([6, 1]); X_init[0][0] = 3.5
-    # kf = KalmanFilter(X_init, np.zeros([6, 6]), np.zeros([6, 6]), np.zeros([3, 3]))
-    # print(kf.step(np.expand_dims(np.pad(np.array([4, 0, 0]), (0,3)), axis=1), dt=0.1))
-    # print(kf.step(np.expand_dims(np.pad(np.array([5, 0, 0]), (0,3)), axis=1), dt=0.2))
-    # print(kf.step(np.expand_dims(np.pad(np.array([5.6, 0, 0]), (0,3)), axis=1), dt=0.1))
-    # print(kf.step(np.expand_dims(np.pad(np.array([6.2, 0, 0]), (0,3)), axis=1), dt=0.1))
 
     # Test Kalman utility functions
     # from utils.kalman_filter import estimate_process_noise, estimate_measurement_noise
@@ -254,9 +245,3 @@ if __name__ == '__main__':
     # egoUAV.disable()
     # leadingUAV.disable()
     # egoUAV.client.reset()
-
-    # import math
-    # import numpy as np
-    # from utils.operations import rotate_to_yaw
-    # vel = rotate_to_yaw(math.radians(360), np.array([[math.sqrt(8)], [0], [0]]))
-    # print(vel)

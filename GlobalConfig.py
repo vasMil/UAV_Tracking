@@ -16,26 +16,12 @@ class GlobalConfig:
     score_threshold: float = 0.1
 
     # The upper an lower limit for the velocity on each axis of both UAVs
-    max_vx, max_vy, max_vz = 5.,  5,  2.5
-    min_vx, min_vy, min_vz = 1., -5, -2.5
+    max_vx, max_vy, max_vz = 5.,  5,  5
+    min_vx, min_vy, min_vz = 1., -5, -5
 
     # How much time should each move airsim api call last for
     # (ex. moveByVelocityAsync, duration argument)
     move_duration: float = 4
-
-    # When using a single client to communicate with AirSim for multiple UAVs
-    # calling .join() on an Async function will result to all UAVs waiting on that Future.
-    # Thus we need a sleep constant to wait on, as the other UAVs continue with their movements and
-    # the current drone applies the Async movement, this way we do not overwhelm the server port.
-    # AirSim discussions:
-    # - https://github.com/microsoft/AirSim/issues/2971
-    # - https://github.com/microsoft/AirSim/issues/2974
-    # As a reminder: (source: https://microsoft.github.io/AirSim/apis/)
-    # If you start another command then it automatically cancels the previous task and
-    # starts new command.
-    # This allows to use a pattern, where your code continuously does the sensing,
-    # computes a new trajectory to follow and issues that path to vehicle in AirSim.
-    sleep_const: float = 2
 
     # Number of steps the game loop should take
     game_loop_steps: int = 10
@@ -119,13 +105,13 @@ class GlobalConfig:
     # the y axis, but this weight may be less, since we also take advantage
     # of the yaw_mode, in order to rotate our camera and look at all times
     # at the LeadingUAV.
-    weight_vel_x, weight_vel_y, weight_vel_z = 1, 1, 2
+    weight_vel_x, weight_vel_y, weight_vel_z = 1, 1, 4
 
     # Logger settings
     sim_fps = 60
-    simulation_time_s = 10
+    simulation_time_s = 20
     camera_fps = 30
     infer_freq_Hz = 30
     filter_freq_Hz = 30
-    filter_type: Literal["None", "KF"] = "None"
-    leadingUAV_update_vel_interval_s = 5
+    filter_type: Literal["None", "KF"] = "KF"
+    leadingUAV_update_vel_interval_s = 2

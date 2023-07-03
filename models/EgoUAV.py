@@ -14,7 +14,6 @@ from nets.DetectionNets import Detection_FasterRCNN
 from nets.DetectionNets import Detection_SSD
 from controller.Controller import Controller
 from controller.KalmanFilter import KalmanFilter
-from utils.operations import vector_transformation
 from models.FrameInfo import EstimatedFrameInfo
 
 class EgoUAV(UAV):
@@ -227,40 +226,6 @@ class EgoUAV(UAV):
         dist[0] += (config.camera_offset_x + config.pawn_size_x/2)
         return dist
 
-    def get_yaw_angle_from_bbox(self,
-                                bbox: Optional[BoundingBox],
-                                camera_pitch_roll_yaw_deg: Optional[Tuple[float, float, float]] = None
-                            ) -> float:
-        """
-        Wraps self._get_yaw_angle() into a function that will also derive the distances
-        required by this method in order to calculate the yaw angle.
-        Thus it may be used by higher level functions.
-
-        Args:
-        bbox: The bounding box, whose center we are going to use as the point for
-        which we will derive the distance.
-
-        Returns:
-        The yaw angle for the EgoUAV, in it's coordinate frame.
-        Note that this might be different than the coordinate frame defined by the
-        orientation of the camera.
-        """
-        if not bbox:
-            return self.getPitchRollYaw()[2]
-
-        dist = self.get_distance_from_bbox(bbox)
-
-        if not camera_pitch_roll_yaw_deg:
-            camera_pitch_roll_yaw_deg = self.getPitchRollYaw()
-
-        dist = vector_transformation(*(camera_pitch_roll_yaw_deg), vec=dist) # type: ignore
-        deg = math.degrees(math.atan(dist[1]/dist[0]))
-        if deg > 0 and dist[1] < 0:
-            deg -= 180
-        elif deg < 0 and dist[1] > 0:
-            deg += 180
-        return deg
-
     def moveToBoundingBoxAsync(self,
                                bbox: Optional[BoundingBox],
                                orient: Tuple[float, float, float],
@@ -271,33 +236,31 @@ class EgoUAV(UAV):
         (offset) on the x axis, using the focal length.
         Then using some trigonomerty determine the offset on the
         y and z axis.
-        Lastly, add to your current coordinates this calculated offset
-        and move towards that object, using moveToPositionAsync().
+        Lastly, use a Controller to decide upon the target velocity of
+        the EgoUAV.
 
         Args:
         - bbox: The BoundingBox object to move towards | or None
-        - time_interval: 1/(nets inference frequency)
+        (If None and there is a Kalman filter present target's position
+        will be estimated, else EgoUAV will preserve it's velocity and direction)
+        - orient: The orientation of the EgoUAV, when the image frame was captured.
+        (This allows us to get the offset back to the original axis, from the camera's
+        axis)
+        - dt: The amount of (simulation) time that has passed from previous advance 
+        on the controller.
 
         Returns:
+        A Tuple with:
         - The Future returned by AirSim
-
-        (If time_interval is not 0 -> the egoUAV will first calculate
-        it's offset from the bbox, normalize it (thus preserving it's direction)
-        and multiply it by the desired velocity (i.e. config.uav_velocity).
-        Converting a distance vector to a velocity vector of a specific
-        magnitude (config.uav_velocity) is an overconstrained problem.
-        Consider a bbox that is further than the maximum distance EgoUAV
-        can travel in time_interval seconds.
-        Else the offset will be directly used as arguments
-        in moveToPositionAsync)
-
-        Note: moveToPositionAsync seems to work the best, the attempt was to
-        make the EgoUAV movement smooth.
+        - An EstimatedFrameInfo object, that contains estimations of target's
+        velocity and target's position etc. (If available)
         """
-        if bbox:
-            offset = self.get_distance_from_bbox(bbox)
-        else:
+        if (not bbox) or (bbox.score and bbox.score < config.score_threshold):
             offset = None
+        else:
+            if bbox.score is None:
+                Warning("Score in BoundingBox object is None, any score_threashold will be ignored!")
+            offset = self.get_distance_from_bbox(bbox)
 
         pitch_roll_yaw_deg = np.array(orient)
         current_pos = self.getMultirotorState().kinematics_estimated.position
@@ -315,6 +278,24 @@ class EgoUAV(UAV):
         return self.lastAction, est_frame_info
 
     def advanceUsingFilter(self, dt: float) -> Tuple[Future, EstimatedFrameInfo]:
+        """
+        Use this function to predict the position of the target.
+        It advances the controller without requiring any kind of measurement.
+
+        If the controller utilizes a Kalman Filter, this will be a prediction,
+        otherwise (i.e. there is no filter), the EgoUAV will continue with the same
+        yaw_angle and the same velocity.
+
+        Args:
+        - dt: The amount of (simulation) time that has passed from previous advance 
+        on the controller.
+
+        Returns:
+        A Tuple with:
+        - The Future returned by AirSim
+        - An EstimatedFrameInfo object, that contains estimations of target's
+        velocity and target's position etc. (If available)
+        """
         if not isinstance(self.controller.filter, KalmanFilter):
             raise Exception(f"There is no KF to support advanceUsingFilter: self.controller.filter is of type {type(self.controller.filter)}")
         current_pos = np.expand_dims(self.getMultirotorState()

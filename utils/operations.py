@@ -5,7 +5,7 @@ import numpy as np
 def rotate_to_yaw(yaw_rad: float, vect: np.ndarray) -> np.ndarray:
     """
     Args:
-    yaw_rad: Yaw angle, at which the axis is rotated at.
+    yaw_rad: Yaw angle, at which to rotate the vector.
     vect: The vector to rotate.
 
     Returns:
@@ -18,6 +18,14 @@ def rotate_to_yaw(yaw_rad: float, vect: np.ndarray) -> np.ndarray:
     return rot_mat @ vect
 
 def rotate_to_roll(roll_rad: float, vect: np.ndarray) -> np.ndarray:
+    """
+    Args:
+    roll_rad: Roll angle, at which to rotate the vector.
+    vect: The vector to rotate.
+
+    Returns:
+    The rotated vector.
+    """
     rot_mat = np.array([[1,                  0,                   0],
                         [0, math.cos(roll_rad), -math.sin(roll_rad)],
                         [0, math.sin(roll_rad),  math.cos(roll_rad)]
@@ -25,6 +33,14 @@ def rotate_to_roll(roll_rad: float, vect: np.ndarray) -> np.ndarray:
     return rot_mat @ vect
 
 def rotate_to_pitch(pitch_rad: float, vect: np.ndarray) -> np.ndarray:
+    """
+    Args:
+    pitch_rad: Pitch angle, at which to rotate the vector.
+    vect: The vector to rotate.
+
+    Returns:
+    The rotated vector.
+    """
     rot_mat = np.array([[math.cos(pitch_rad),  0, math.sin(pitch_rad)],
                         [0,                    1,                   0],
                         [-math.sin(pitch_rad), 0, math.cos(pitch_rad)]
@@ -32,10 +48,17 @@ def rotate_to_pitch(pitch_rad: float, vect: np.ndarray) -> np.ndarray:
     return rot_mat @ vect
 
 def rotate3d(pitch_deg: float, roll_deg: float, yaw_deg: float, point: np.ndarray) -> np.ndarray:
-    # Convert angles to radians and get their opposites
-    # since we need to project the point, which is measured in the
-    # coordinate frame that is rotated by pitch, roll and yaw,
-    # onto the original axis (i.e. pitch = roll = yaw = 0).
+    """
+    Rotate the point by some desired angle on each axis of the 3D space.
+    Args:
+    pitch_deg: Pitch angle, at which to rotate the vector.
+    roll_deg: Roll angle, at which to rotate the vector.
+    yaw_deg: Yaw angle, at which to rotate the vector.
+    point: The vector to rotate.
+
+    Returns:
+    The rotated vector.
+    """
     pitch_rad = math.radians(pitch_deg) # θ
     roll_rad = math.radians(roll_deg) # ψ
     yaw_rad = math.radians(yaw_deg) # φ
@@ -54,10 +77,29 @@ def rotate3d(pitch_deg: float, roll_deg: float, yaw_deg: float, point: np.ndarra
     rot_mat = rot_mat_yaw @ rot_mat_pitch @ rot_mat_roll
     return rot_mat @ point
 
-def normalize_angle(angle_deg: float) -> float:
-    angle_deg = angle_deg % 360
-    if angle_deg > 180:
-        angle_deg -= 360
+def offset_to_yaw_angle(offset: np.ndarray) -> float:
+    """
+    Using the offset that is recorded on any translation of the global coordinate
+    system to calculate the yaw angle at which the EgoUAV should be rotated at, in
+    order to preserve (on the y axis) the target in it's FOV.
+    
+    Definition of: "any offset of the global coordinate system"
+        No rotation of any of the global coordinate axis is allowed, 
+        but all possible translations are
+    
+    Args:
+    - offset: The offset between the EgoUAV and the target, IN GLOBAL COORDINATE SYSTEM.
+
+    Returns:
+    The yaw angle at which the target will be found (in degrees).
+    """
+    if offset[0] == 0:
+        return 0
+    angle_deg = math.degrees(math.atan(offset[1] / offset[0]))
+    if angle_deg > 0 and offset[1] < 0:
+        angle_deg -= 180
+    elif angle_deg < 0 and offset[1] > 0:
+        angle_deg += 180
     return angle_deg
 
 def vector_transformation(pitch_deg: float,
@@ -67,7 +109,7 @@ def vector_transformation(pitch_deg: float,
                           to: bool = False
                     ) -> np.ndarray:
     """
-    Projects vec that is in a coordinate frame rotated by pitch_deg,
+    Moves vec that is in a coordinate frame rotated by pitch_deg,
     roll_deg, yaw_deg. To the original coordinate frame.
 
     Args:

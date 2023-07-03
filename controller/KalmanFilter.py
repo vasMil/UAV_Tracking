@@ -10,9 +10,9 @@ class KalmanFilter():
                  R: np.ndarray
             ) -> None:
         # Time constant variables
-        self.Q = Q
-        self.R = R
-        # self.A = np.eye(6, 6) + np.eye(6, 6, 3)*dt
+        self.Q = Q                      # Process Noise Covariance Matrix
+        self.R = R                      # Measurement Covariance Matrix
+        # self.F = np.eye(6, 6) + np.eye(6, 6, 3)*dt
         # self.B = np.zeros([6, 6])
         self.C = np.eye(3, 6)
         self.H = np.eye(3, 6)           # Transformation matrix, that maps the state vactor to the measurement vector.
@@ -34,30 +34,27 @@ class KalmanFilter():
 
     def step(self, X_meas: Optional[np.ndarray], dt: float) -> np.ndarray:
         """
-        Using the preparation from prepare_step and the provided measurement.
         Update the estimation and output the new prediction.
 
         Args:
-        dt
-        X_meas: The 6x1 matrix that contains the measurements for
-        the current state of the system
+        - dt: The time interval between two consecutive calls.
+        - X_meas: The 6x1 matrix that contains the measurements for
+        the current state of the system | None. If None only the prediction
+        step will be performed.
 
         Returns:
-        The velocity, extracted out of the estimated state of the system.
-        This estimate is a combination of the predicted state X_pred and the
-        measured state X_meas.
-        It is a 3x1 matrix of form: [vx vy vz]'
+        The 6x1 state matrix as an numpy ndarray.
         """
         # Create matrix A (the one that models our system)
-        self.A = np.eye(6, 6) + np.eye(6, 6, 3)*dt
+        self.F = np.eye(6, 6) + np.eye(6, 6, 3)*dt
 
         # Predict the new state
-        self.X_pred = self.A @ self.X_prev + self.wt
-        self.P_pred = self.A @ self.P_prev @ self.A.T + self.Q
+        self.X_pred = self.F @ self.X_prev + self.wt
+        self.P_pred = self.F @ self.P_prev @ self.F.T + self.Q
         
         if X_meas is not None:
             # Calculate the Kalman Gain
-            self.K = self.P_pred @ self.H.T @ (self.H @ self.P_pred @ self.H.T + self.R)
+            self.K = self.P_pred @ self.H.T @ np.linalg.inv(self.H @ self.P_pred @ self.H.T + self.R)
             # Reshape the measurement
             Y_curr = self.C @ X_meas + self.zt
             self.X_curr = self.X_pred + self.K @ (Y_curr - (self.H @ self.X_pred))

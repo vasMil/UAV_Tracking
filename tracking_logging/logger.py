@@ -1,8 +1,7 @@
-from typing import List, Optional
+from typing import List, Optional, Literal
 from operator import itemgetter
 import datetime, time
 import os
-import math
 
 import torch
 from torchvision.utils import save_image
@@ -27,29 +26,16 @@ __all__ = (
 class Logger:
     """
     A class that handles captured frames, by appending the bbox if there is one, along
-    with more information about the angles.
+    with ground truth and estimated information.
 
     It is important to note that the bbox displayed on the frame, along with the angle information
     is not exactly as viewed by the egoUAV. That is because the egoUAV does not have a bbox instantly.
-    There is a small delay between the timestamp at which the frame is captured and the timestamp at which
+    There is a small delay between the time at which the frame is captured and the time at which
     the result from inference can be converted to the velocity. That delay is dt = 1/inference_frequency.
 
-    This has a few implications. The estimated angle and the actual angle are never truly computed as displayed.
-
-    In the EgoUAV:
-    There should be an extra step of subtracting the distance traveled in dt by the EgoUAV, to the offset, before the
-    angle is estimated.
-    This can be extended if we have an estimation for the velocity of the LeadingUAV (for example by using a Kalman Filter).
-    This way we may add to the reduced offset (from the previous step) the estimated distance that the LeadingUAV traveled in dt.
-    Thus way get an even more accurate (recent) estimation of the angle between the egoUAV and the LeadingUAV.
-
-    For the logger:
-    All this is not required, since the logger uses the bbox as soon as the frame is captured, in order to estimate the angle
-    between the two UAVs.
-    
-    Conclusion:
-    The two steps above, of adding and subtracting to/from the offset, is an attempt to correct the fact that 
-    the inferece takes dt time.
+    You should always keep in mind that the information added to each frame is the information that would
+    be available if the inference was instant. In reality the EgoUAV will become aware of this "displayed"
+    state after dt time and that is when all decisions will be applied.
     """
     def __init__(self,
                  egoUAV: EgoUAV,
@@ -90,6 +76,21 @@ class Logger:
         self.last_frames_with_bbox_idx: List[int] = []
 
     def create_frame(self, frame: torch.Tensor, is_bbox_frame: bool):
+        """
+        Creates a frame and append's it to loggers list of frames for future use.
+
+        It also creates a GroundTruthFrameInfo object that also saves in a list. This
+        object contains all ground truth information provided by the simulation at the
+        time this function is called. Thus you need to be careful and invoce it right
+        after you have captured the frame.
+
+        Args:
+        - frame: The torch tensor with the expected dimensions defined in GlobalConfig.
+        - is_bbox_frame: A boolean that when set to true signals the fact that in the
+        future a bbox will be provided for this frame. Else it is just a "filler" frame
+        that is between bbox frames in order to achieve camera_fps (which is greater than
+        inference_freq)
+        """
         # Collect data from simulation to variables
         ego_pos = self.egoUAV.simGetObjectPose().position
         ego_vel = self.egoUAV.simGetGroundTruthKinematics().linear_velocity
@@ -120,11 +121,39 @@ class Logger:
 
     def update_frame(self,
                      bbox: Optional[BoundingBox],
-                     est_frame_info: EstimatedFrameInfo
+                     est_frame_info: EstimatedFrameInfo,
+                     camera_frame_idx: int
                 ):
+        """
+        This method should be called when a bbox is available. This bbox is found
+        on the frame with idx camera_frame_idx in the list with the frames preserved.
+
+        Due to the way this logger has been implemented, frames can be saved before the
+        simulation is complete, so we may not run out of memory, if the simulation is run for too long.
+        This creates an indexing chaos, since we also need to be able to track up to which frame we have
+        already saved to the disk and thus remove from the list of frames. Thus even though the camera_frame_idx
+        is not required, it is there to help us assert some conditions, so we are sure everything works as expected.
+        It may be removed in the future.
+
+        This function mostly helps with the indexing and invokes draw_frame to add the information to the frame.
+        
+        Args:
+        - bbox: The bbox we have found.
+        - est_frame_info: It is an object returned from EgoUAV. It is all the estimations it \
+        has made, based on the offset extracted by the bbox. We also log EgoUAV's point of view \
+        in order to be able to compare it with the ground truth that has been preserved upon \
+        frame's creation (create_frame method).
+        - camera_frame_idx: The index of the camera frame to be updated.
+        """
         g_frame_idx = self.last_frames_with_bbox_idx.pop(0)
         frame_list_idx = g_frame_idx - self.next_frame_idx_to_save
         frame = self.frames[frame_list_idx]
+        try:
+            assert(self.info_per_frame[g_frame_idx]["frame_idx"] == camera_frame_idx)
+        except:
+            print(f"Saved frame idx: {self.info_per_frame[g_frame_idx]['frame_idx']}")
+            print(f"True frame idx: {camera_frame_idx}")
+            raise Exception("FRAME INDEXING ERROR!")
         self.frames[frame_list_idx] = self.draw_frame(frame, bbox, self.info_per_frame[g_frame_idx], est_frame_info)
 
     def draw_frame(self,
@@ -140,6 +169,15 @@ class Logger:
                        "still_tracking": None
                     }
                 ) -> torch.Tensor:
+        """
+        Merges all information that it is provided and uses utils.image functions
+        to append all this information onto a frame.
+
+        Before the information is added the resolution of the frame is increased,
+        so the font is more readable and it does not take a lot of space on the image.
+
+        It also preserves the merge FrameInfo object to a new list.
+        """
         if bbox:
             # Add info on the camera frame
             frame = add_bbox_to_image(frame, bbox)
@@ -158,6 +196,11 @@ class Logger:
         return frame
 
     def save_frames(self, finalize: bool = False):
+        """
+        Saves all the frames that have been drawn so far.
+        If finalize is True, it will draw any leftover frames,
+        with the ground truth information only and save them aswell.
+        """
         idx = 0
         for idx, frame in enumerate(self.frames):
             # Calculate the global frame index
@@ -183,6 +226,10 @@ class Logger:
         self.next_frame_idx_to_save += idx
 
     def write_setup(self):
+        """
+        Writes a txt file that contains useful information for the simulation run.
+        It is mostly about GlobalConfig variables.
+        """
         with open(self.setup_file, 'w') as f:
             f.write(f"# The upper an lower limit for the velocity on each axis of both UAVs\n"
                     f"max_vx, max_vy, max_vz = {config.max_vx},  {config.max_vy},  {config.max_vz}\n"
@@ -210,6 +257,12 @@ class Logger:
             )
 
     def dump_logs(self):
+        """
+        Sorts all the FrameIngo objects, just be absolutely sure they are on the right order
+        (it may not be required but it is safer to do so)
+
+        Pickles the list and saves it to a file.
+        """
         # source: https://stackoverflow.com/questions/72899/how-to-sort-a-list-of-dictionaries-by-a-value-of-the-dictionary-in-python
         self.updated_info_per_frame = sorted(self.updated_info_per_frame,
                                              key=itemgetter("extra_frame_idx"),
@@ -219,6 +272,10 @@ class Logger:
             pickle.dump(self.updated_info_per_frame, f)
 
     def write_video(self):
+        """
+        Using all frames created and drawn by the logger, use OpenCV's
+        VideoWriter to write the output video of this run.
+        """
         # Load images into a list
         files = os.listdir(self.images_path)
         files.sort()
@@ -244,6 +301,11 @@ class Logger:
                            sim_info: GroundTruthFrameInfo,
                            est_info: EstimatedFrameInfo
                         ) -> FrameInfo:
+        """
+        Merges all provided arguments to a single FrameInfo object,
+        that can be later be saved (dump_logs) and/or used to add information
+        on the frame, this information refers to.
+        """
         err_lead_pos = None if est_info["leadingUAV_position"] is None \
                             else tuple(np.array(sim_info["leadingUAV_position"]) -
                                        np.array(est_info["leadingUAV_position"])
@@ -293,11 +355,15 @@ class Logger:
         return frameInfo
 
 class GraphLogs:
+    """
+    A class that utilizes, the information logged and creates useful Graphs,
+    for the state of the simulation at each timestep (at which the logger recorded info).
+    """
     def __init__(self,
                  pickle_file: Optional[str] = None,
                  frame_info: Optional[List[FrameInfo]] = None
             ) -> None:
-        if not pickle_file or frame_info:
+        if pickle_file is None and frame_info is None:
             raise Exception("One of two arguments must be not none")
         if pickle_file and frame_info:
             raise Exception("You should only pass one of the two arguments")
@@ -308,7 +374,34 @@ class GraphLogs:
         elif frame_info:
             self.frame_info = frame_info
 
-    def graph_distance(self, sim_fps: int, filename: str):
+    def _graph(self,
+               ax: plt.Axes,
+               fps: int,
+               sim_key: str,
+               est_key: str,
+               sim_color: str = "blue",
+               est_color: str = "red"
+            ):
+        # Initialize two lists, one for ground truth info
+        # and one for estimated info
+        gt_info = []
+        est_info = []
+        # Populate the ground truth list
+        for info in self.frame_info:
+            gt_info.append(np.linalg.norm(np.array(info[sim_key])))
+        # Populate the estimation list
+        for info in self.frame_info:
+            if info[est_key] is None:
+                est_info.append(None)
+            est_info.append(np.linalg.norm(np.array(info[est_key])))
+        # Covert the x axis from frame index to time
+        mult_factor = 1/fps
+        x_axis = [x*mult_factor for x in range(0, len(self.frame_info))]
+        ax.plot(x_axis, gt_info, color=sim_color, label=sim_key)
+        ax.plot(x_axis, est_info, color=est_color, label=est_key)
+        ax.legend()
+
+    def graph_distance(self, fps: int, filename: str):
         # Calculate the distance between the two UAVs for each frame
         sim_dist = []
         est_dist = []
@@ -319,16 +412,63 @@ class GraphLogs:
 
         for info in self.frame_info:
             if info["est_ego_pos"] is None or info["est_lead_pos"] is None:
-                est_dist.clear()
+                est_dist.append(None)
                 break
             ego_pos = np.array(info["est_ego_pos"])
             lead_pos = np.array(info["est_lead_pos"])
             est_dist.append(np.linalg.norm(lead_pos - ego_pos))
 
-        mult_factor = 1/sim_fps
+        mult_factor = 1/fps
         x_axis = [x*mult_factor for x in range(0, len(self.frame_info))]
         plt.plot(x_axis, sim_dist, color="blue", label="sim_dist")
-        if est_dist:
-            plt.plot(x_axis, est_dist, color="red", label="est_dist")
+        plt.plot(x_axis, est_dist, color="red", label="est_dist")
         plt.legend()
         plt.savefig(filename)
+
+    def graph_velocities(self, fps: int, filename: str):
+        fig, ax = plt.subplots()
+        self._graph(ax, fps, "sim_lead_vel", "est_lead_vel")
+        # self._graph(ax, fps, "sim_ego_vel", "target_ego_vel", "purple", "orange")
+        fig.savefig(filename)
+
+    def graph_positions(self, fps: int, filename: str):
+        fig, ax = plt.subplots()
+        self._graph(ax, fps, "sim_lead_pos", "est_lead_pos")
+        # self._graph(ax, fps, "sim_ego_pos", "est_ego_pos", "purple", "orange")
+        fig.savefig(filename)
+
+    def graph_velocity_on_axis(self, fps: int,
+                               filename: str,
+                               axis: Literal["x", "y", "z"],
+                               vehicle_name: Literal["ego", "lead"]
+        ):
+        # Setup the figure
+        fig, ax = plt.subplots()
+        # Decide upon the keys you want to plot
+        sim_key, est_key = ("sim_ego_vel", "target_ego_vel") if vehicle_name == "ego" else ("sim_lead_vel", "est_lead_vel")
+        # Extract the correct dimension (instructed by the axis argument)
+        idx = 0 if axis == "x" else 1 if axis == "y" else 2
+
+        def extract_values(finfo: FrameInfo, sim_key: str, est_key: str, idx: int):
+            sim_info = finfo[sim_key][idx]
+            est_info = None
+            if finfo[est_key] is not None:
+                est_info = finfo[est_key][idx]
+            return (sim_info, est_info,)
+
+        # Initialize two lists, one for ground truth info
+        # and one for estimated info
+        gt_info = []
+        est_info = []
+        for info in self.frame_info:
+            simi, esti = extract_values(info, sim_key, est_key, idx)
+            gt_info.append(simi)
+            est_info.append(esti)
+
+        # Plot the lists
+        mult_factor = 1/fps
+        x_axis = [x*mult_factor for x in range(0, len(self.frame_info))]
+        ax.plot(x_axis, gt_info, color="blue", label=sim_key)
+        ax.plot(x_axis, est_info, color="red", label=est_key)
+        ax.legend()
+        fig.savefig(filename)

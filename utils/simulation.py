@@ -48,3 +48,43 @@ def getSquarePathAroundPoint(pointx: float,
         point += init_point
 
     return ret_l
+
+
+def getTestPath(start_pos: airsim.Vector3r) -> List[airsim.Vector3r]:
+    # Define list of points.
+    # Each point is defined around (0, 0, 0).
+    # This allows us to easily think about the angles at which the vehicle
+    # will move along, if it was at point (0, 0, 0) and thus we can design
+    # with ease difficult paths.
+    path = [
+        start_pos,
+        airsim.Vector3r(10, 0, 0),    # Test x axis - moving forward
+        # airsim.Vector3r(-10, 3, 0), # Test x axis - moving backwards, this is not allowed and thus will be skipped
+
+        airsim.Vector3r(2, 10, 0),    # Test y axis - moving fast right
+        airsim.Vector3r(20, 0, 0),    # Move forward so you will not crush on the EgoUAV
+        airsim.Vector3r(2, -10, 0),   # Test y axis - moving fast left
+        airsim.Vector3r(20, 0, 0),    # Move forward so you will not crush on the EgoUAV
+        airsim.Vector3r(0, 10, 0),    # Test y axis - moving faster right
+        airsim.Vector3r(20, 0, 0),    # Move forward so you will not crush on the EgoUAV
+        airsim.Vector3r(0, -10, 0),   # Test y axis - moving faster left
+
+        airsim.Vector3r(20, 0, 0),    # Move forward so you will not crush on the EgoUAV
+        airsim.Vector3r(2, 0, -10),   # Test z axis - moving fast up
+        airsim.Vector3r(20, 0, 0),    # Move forward so you will not crush on the EgoUAV
+        airsim.Vector3r(2, 0, 10),    # Test z axis - moving fast down
+        airsim.Vector3r(20, 0, 0),    # Move forward so you will not crush on the EgoUAV
+        airsim.Vector3r(0, 0, -10),   # Test z axis - moving faster up
+        airsim.Vector3r(20, 0, 0),    # Move forward so you will not crush on the EgoUAV
+        airsim.Vector3r(0, 0, 10),    # Test z axis - moving faster down
+        airsim.Vector3r(20, 0, 0),    # Move forward so you will not crush on the EgoUAV
+    ]
+
+    # Sum each point with the previous, in order to get
+    # the actual points on the coordinate system and allow
+    # for a smooth movement on the resulted path.
+    for i, _ in enumerate(path):
+        if i == 0: continue
+        path[i] += path[i-1]
+
+    return path

@@ -109,9 +109,9 @@ class GlobalConfig:
 
     # Logger settings
     sim_fps = 60
-    simulation_time_s = 20
+    simulation_time_s = 60
     camera_fps = 30
     infer_freq_Hz = 30
     filter_freq_Hz = 30
-    filter_type: Literal["None", "KF"] = "KF"
+    filter_type: Literal["None", "KF"] = "None"
     leadingUAV_update_vel_interval_s = 2

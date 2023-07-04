@@ -8,6 +8,7 @@ from GlobalConfig import GlobalConfig as config
 from models.LeadingUAV import LeadingUAV
 from models.EgoUAV import EgoUAV
 from tracking_logging.logger import Logger, GraphLogs
+from utils.simulation import getTestPath
 
 def tracking_at_frequency() -> Logger:
     """
@@ -83,7 +84,9 @@ def tracking_at_frequency() -> Logger:
 
             # Update the leadingUAV velocity every update_vel_s*sim_fps frames
             if frame_idx % (config.leadingUAV_update_vel_interval_s*config.sim_fps) == 0:
-                leadingUAV.random_move(config.leadingUAV_update_vel_interval_s)
+                # leadingUAV.random_move(config.leadingUAV_update_vel_interval_s)
+                if frame_idx == 0:
+                    leadingUAV.moveOnPathAsync(getTestPath(leadingUAV.simGetGroundTruthKinematics().position))
 
             # Get a bounding box and move towards the previous detection
             # this way we also simulate the delay between the capture of the frame

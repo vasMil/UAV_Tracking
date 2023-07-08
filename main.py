@@ -23,12 +23,12 @@ if __name__ == '__main__':
     #     ssd.save(f"nets/checkpoints/ssd{i+10-1}.checkpoint")
 
     # Run the simulation
-    co_sim = CoSimulator()
-    co_sim.start()
-    while not co_sim.done and co_sim.status == 0:
-        co_sim.advance()
+    # co_sim = CoSimulator()
+    # co_sim.start()
+    # while not co_sim.done and co_sim.status == 0:
+    #     co_sim.advance()
     
-    co_sim.export_graphs()
+    # co_sim.export_graphs()
 
     # Run inference frequency benchmark
     # from nets.DetectionNets import Detection_SSD, Detection_FasterRCNN
@@ -92,3 +92,7 @@ if __name__ == '__main__':
     # egoUAV.disable()
     # leadingUAV.disable()
     # egoUAV.client.reset()
+
+    from utils.data import remove_entries_of_missing_images, rename_images
+    remove_entries_of_missing_images("./data/empty_map/shadows/", "./data/empty_map/shadows/empty_map_positions.csv")
+    rename_images("./data/empty_map/shadows/", "./data/empty_map/shadows/empty_map_positions.csv", 0)

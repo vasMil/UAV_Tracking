@@ -1,3 +1,5 @@
+import traceback
+
 from models.CoSimulator import CoSimulator
 
 if __name__ == '__main__':
@@ -37,8 +39,15 @@ if __name__ == '__main__':
 
     # Run the simulation
     co_sim = CoSimulator()
-    co_sim.start()
-    while not co_sim.done and co_sim.status == 0:
-        co_sim.advance()
-    
-    co_sim.export_graphs()
+    try:
+        co_sim.start()
+        while not co_sim.done and co_sim.status == 0:
+            co_sim.advance()
+    except Exception:
+        print("There was an error, writing setup file and releasing AirSim...")
+        print("\n" + "*"*10 + " THE ERROR MESSAGE " + "*"*10)
+        traceback.print_exc()
+        co_sim.status = -1
+    finally:
+        co_sim.finalize()
+        co_sim.export_graphs()

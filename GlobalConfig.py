@@ -109,7 +109,7 @@ class GlobalConfig:
 
     # Logger settings
     sim_fps = 60
-    simulation_time_s = 60
+    simulation_time_s = 10
     camera_fps = 30
     infer_freq_Hz = 30
     filter_freq_Hz = 30

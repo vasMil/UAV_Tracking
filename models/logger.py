@@ -145,6 +145,8 @@ class Logger:
         frame's creation (create_frame method).
         - camera_frame_idx: The index of the camera frame to be updated.
         """
+        if len(self.last_frames_with_bbox_idx) == 0:
+            return
         g_frame_idx = self.last_frames_with_bbox_idx.pop(0)
         frame_list_idx = g_frame_idx - self.next_frame_idx_to_save
         frame = self.frames[frame_list_idx]

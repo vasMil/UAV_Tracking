@@ -137,9 +137,9 @@ class CoSimulator():
         self.camera_frame_idx += 1
 
     def hook_leadingUAV_move(self):
-        # self.leadingUAV.random_move(self.leadingUAV_update_vel_interval_s)
-        if self.frame_idx == 0:
-            self.leadingUAV.moveOnPathAsync(getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position))
+        self.leadingUAV.random_move(self.leadingUAV_update_vel_interval_s)
+        # if self.frame_idx == 0:
+        #     self.leadingUAV.moveOnPathAsync(getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position))
 
     def hook_net_inference(self):
         # Run egoUAV's detection net, save the frame with all
@@ -172,6 +172,8 @@ class CoSimulator():
 
 
     def finalize(self):
+        if self.done == True:
+            return
         # Save the last evaluated bbox
         _, est_frame_info = self.egoUAV.moveToBoundingBoxAsync(self.bbox, self.orient, dt=(1/self.filter_freq_Hz))
         self.logger.update_frame(self.bbox, est_frame_info, self.camera_frame_idx)

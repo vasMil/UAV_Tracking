@@ -1,4 +1,4 @@
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Tuple
 from operator import itemgetter
 import datetime, time
 import os
@@ -374,104 +374,81 @@ class GraphLogs:
         elif frame_info:
             self.frame_info = frame_info
 
+    def _map_axis_to_idx(self,
+                         axis: Literal["x", "y", "z", "all"]
+    ) -> int:
+        return 0 if axis == "x" else 1 if axis == "y" else 2
+
+    def _map_gtype_vname_to_keys(self,
+                                graph_type: Literal["position", "velocity", "distance"],
+                                vname: Literal["EgoUAV", "LeadingUAV"]
+    ) -> Tuple[str, str, Optional[str], Optional[str]]:
+        if vname == "EgoUAV":
+            if graph_type == "position":
+                sim_key, est_key, sim_key2, est_key2 = "sim_ego_pos", "est_ego_pos", None, None
+            elif graph_type == "velocity":
+                sim_key, est_key, sim_key2, est_key2 = "sim_ego_vel", "target_ego_vel", None, None
+            else:
+                sim_key, est_key, sim_key2, est_key2 = "sim_ego_pos", "est_ego_pos", "sim_lead_pos", "est_lead_pos"
+        else:
+            if graph_type == "position":
+                sim_key, est_key, sim_key2, est_key2 = "sim_lead_pos", "est_lead_pos", None, None
+            elif graph_type == "velocity":
+                sim_key, est_key, sim_key2, est_key2 = "sim_lead_vel", "est_lead_vel", None, None
+            else:
+                sim_key, est_key, sim_key2, est_key2 = "sim_lead_pos", "est_lead_pos", "sim_ego_pos", "est_ego_pos"
+        return sim_key, est_key, sim_key2, est_key2
+                
     def _graph(self,
-               ax: plt.Axes,
-               fps: int,
-               sim_key: str,
-               est_key: str,
-               sim_color: str = "blue",
-               est_color: str = "red"
-            ):
-        # Initialize two lists, one for ground truth info
-        # and one for estimated info
-        gt_info = []
-        est_info = []
-        # Populate the ground truth list
-        for info in self.frame_info:
-            gt_info.append(np.linalg.norm(np.array(info[sim_key])))
-        # Populate the estimation list
-        for info in self.frame_info:
-            if info[est_key] is None:
-                est_info.append(np.nan)
-                continue
-            est_info.append(np.linalg.norm(np.array(info[est_key])))
-        # Covert the x axis from frame index to time
-        mult_factor = 1/fps
-        x_axis = [x*mult_factor for x in range(0, len(self.frame_info))]
-        ax.plot(x_axis, gt_info, color=sim_color, label=sim_key)
-        ax.plot(x_axis, est_info, color=est_color, label=est_key)
-        ax.legend()
+              ax: plt.Axes,
+              fps: int,
+              graph_type: Literal["position", "velocity", "distance"],
+              axis: Literal["x", "y", "z", "all"],
+              vehicle_name: Literal["EgoUAV", "LeadingUAV"],
+              sim_color: str,
+              est_color: str
+    ) -> None:
+        def index_info(info, key):
+            reg = info[key]
+            if reg is None:
+                return np.nan
+            if isinstance(reg, Tuple) and axis != "all":
+                return info[key][self._map_axis_to_idx(axis)]
+            return reg
+        
+        def extract_values(info, sim_key, est_key, sim_key2, est_key2):
+            simi = np.array(index_info(info, sim_key))
+            esti = np.array(index_info(info, est_key))
+            if sim_key2 is None or est_key2 is None:
+                return np.linalg.norm(simi), np.linalg.norm(esti)
+            
+            simi2 = np.array(index_info(info, sim_key2))
+            esti2 = np.array(index_info(info, est_key2))
+            return np.linalg.norm(simi - simi2), np.linalg.norm(esti - esti2)
 
-    def graph_distance(self, fps: int, filename: str):
-        # Calculate the distance between the two UAVs for each frame
-        sim_dist = []
-        est_dist = []
-        for info in self.frame_info:
-            ego_pos = np.array(info["sim_ego_pos"])
-            lead_pos = np.array(info["sim_lead_pos"])
-            sim_dist.append(np.linalg.norm(lead_pos - ego_pos))
-
-        for info in self.frame_info:
-            if info["est_ego_pos"] is None or info["est_lead_pos"] is None:
-                est_dist.append(np.nan)
-                continue
-            ego_pos = np.array(info["est_ego_pos"])
-            ego_pos = np.ma.array(ego_pos, mask=np.isnan(ego_pos))
-            lead_pos = np.array(info["est_lead_pos"])
-            lead_pos = np.ma.array(lead_pos, mask=np.isnan(lead_pos))
-            est_dist.append(np.linalg.norm(ego_pos - lead_pos))
-
-        mult_factor = 1/fps
-        x_axis = [x*mult_factor for x in range(0, len(self.frame_info))]
-        plt.plot(x_axis, sim_dist, color="blue", label="sim_dist")
-        plt.plot(x_axis, est_dist, color="red", label="est_dist")
-        plt.legend()
-        plt.savefig(filename)
-
-    def graph_velocities(self, fps: int, filename: str):
-        fig, ax = plt.subplots()
-        self._graph(ax, fps, "sim_lead_vel", "est_lead_vel")
-        # self._graph(ax, fps, "sim_ego_vel", "target_ego_vel", "purple", "orange")
-        fig.savefig(filename)
-
-    def graph_positions(self, fps: int, filename: str):
-        fig, ax = plt.subplots()
-        self._graph(ax, fps, "sim_lead_pos", "est_lead_pos")
-        # self._graph(ax, fps, "sim_ego_pos", "est_ego_pos", "purple", "orange")
-        fig.savefig(filename)
-
-    def graph_velocity_on_axis(self, fps: int,
-                               filename: str,
-                               axis: Literal["x", "y", "z"],
-                               vehicle_name: Literal["ego", "lead"]
-        ):
-        # Setup the figure
-        fig, ax = plt.subplots()
-        # Decide upon the keys you want to plot
-        sim_key, est_key = ("sim_ego_vel", "target_ego_vel") if vehicle_name == "ego" else ("sim_lead_vel", "est_lead_vel")
-        # Extract the correct dimension (instructed by the axis argument)
-        idx = 0 if axis == "x" else 1 if axis == "y" else 2
-
-        def extract_values(finfo: FrameInfo, sim_key: str, est_key: str, idx: int):
-            sim_info = finfo[sim_key][idx]
-            est_info = None
-            if finfo[est_key] is not None:
-                est_info = finfo[est_key][idx]
-            return (sim_info, est_info,)
-
-        # Initialize two lists, one for ground truth info
-        # and one for estimated info
-        gt_info = []
+        sim_key, est_key, sim_key2, est_key2 = self._map_gtype_vname_to_keys(graph_type, vehicle_name)
+        sim_info = []
         est_info = []
         for info in self.frame_info:
-            simi, esti = extract_values(info, sim_key, est_key, idx)
-            gt_info.append(simi)
+            simi, esti = extract_values(info, sim_key, est_key, sim_key2, est_key2)
+            sim_info.append(simi)
             est_info.append(esti)
-
-        # Plot the lists
+        
         mult_factor = 1/fps
         x_axis = [x*mult_factor for x in range(0, len(self.frame_info))]
-        ax.plot(x_axis, gt_info, color="blue", label=sim_key)
-        ax.plot(x_axis, est_info, color="red", label=est_key)
+        ax.plot(x_axis, sim_info, color=sim_color, label="ground truth")
+        ax.plot(x_axis, est_info, color=est_color, label="estimation")
         ax.legend()
+
+    def graph(self,
+              fps: int,
+              graph_type: Literal["position", "velocity", "distance"],
+              axis: Literal["x", "y", "z", "all"],
+              vehicle_name: Literal["EgoUAV", "LeadingUAV"],
+              filename: str,
+              sim_color: str = "blue",
+              est_color: str = "red"
+    ) -> None:
+        fig, ax = plt.subplots()
+        self._graph(ax, fps, graph_type, axis, vehicle_name, sim_color, est_color)
         fig.savefig(filename)

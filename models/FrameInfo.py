@@ -1,4 +1,4 @@
-from typing import List, TypedDict, Tuple, Optional
+from typing import TypedDict, Tuple, Optional
 
 class GroundTruthFrameInfo(TypedDict):
     frame_idx: int

@@ -197,27 +197,25 @@ class CoSimulator():
 
     def export_graphs(self):
         gl = GraphLogs(frame_info=self.logger.updated_info_per_frame)
-        gl.graph_distance(fps=self.camera_fps,
-                          filename=(os.path.join(self.logger.parent_folder, "dist_graph.png"))
-        )
-        gl.graph_velocities(fps=self.camera_fps,
-                            filename=(os.path.join(self.logger.parent_folder, "vel_graph.png"))
-        )
-        gl.graph_positions(fps=self.camera_fps,
-                           filename=(os.path.join(self.logger.parent_folder, "pos_graph.png"))
-        )
-        gl.graph_velocity_on_axis(fps=self.camera_fps,
-                                  filename=(os.path.join(self.logger.parent_folder, "xvel_graph.png")),
-                                  axis="x",
-                                  vehicle_name="lead"
-        )
-        gl.graph_velocity_on_axis(fps=self.camera_fps,
-                                  filename=(os.path.join(self.logger.parent_folder, "yvel_graph.png")),
-                                  axis="y",
-                                  vehicle_name="lead"
-        )
-        gl.graph_velocity_on_axis(fps=self.camera_fps,
-                                  filename=(os.path.join(self.logger.parent_folder, "zvel_graph.png")),
-                                  axis="z",
-                                  vehicle_name="lead"
-        )
+        gl.graph(self.camera_fps, graph_type="position", axis="all", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "ego_pos.png"))
+        gl.graph(self.camera_fps, graph_type="position", axis="x", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "ego_posx.png"))
+        gl.graph(self.camera_fps, graph_type="position", axis="y", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "ego_posy.png"))
+        gl.graph(self.camera_fps, graph_type="position", axis="z", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "ego_posz.png"))
+        gl.graph(self.camera_fps, graph_type="velocity", axis="all", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "ego_vel.png"))
+        gl.graph(self.camera_fps, graph_type="velocity", axis="x", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "ego_velx.png"))
+        gl.graph(self.camera_fps, graph_type="velocity", axis="y", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "ego_vely.png"))
+        gl.graph(self.camera_fps, graph_type="velocity", axis="z", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "ego_velz.png"))
+
+        gl.graph(self.camera_fps, graph_type="position", axis="all", vehicle_name="LeadingUAV", filename=os.path.join(self.logger.parent_folder, "lead_pos.png"))
+        gl.graph(self.camera_fps, graph_type="position", axis="x", vehicle_name="LeadingUAV", filename=os.path.join(self.logger.parent_folder, "lead_posx.png"))
+        gl.graph(self.camera_fps, graph_type="position", axis="y", vehicle_name="LeadingUAV", filename=os.path.join(self.logger.parent_folder, "lead_posy.png"))
+        gl.graph(self.camera_fps, graph_type="position", axis="z", vehicle_name="LeadingUAV", filename=os.path.join(self.logger.parent_folder, "lead_posz.png"))
+        gl.graph(self.camera_fps, graph_type="velocity", axis="all", vehicle_name="LeadingUAV", filename=os.path.join(self.logger.parent_folder, "lead_vel.png"))
+        gl.graph(self.camera_fps, graph_type="velocity", axis="x", vehicle_name="LeadingUAV", filename=os.path.join(self.logger.parent_folder, "lead_velx.png"))
+        gl.graph(self.camera_fps, graph_type="velocity", axis="y", vehicle_name="LeadingUAV", filename=os.path.join(self.logger.parent_folder, "lead_vely.png"))
+        gl.graph(self.camera_fps, graph_type="velocity", axis="z", vehicle_name="LeadingUAV", filename=os.path.join(self.logger.parent_folder, "lead_velz.png"))
+
+        gl.graph(self.camera_fps, graph_type="distance", axis="all", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "dist.png"))
+        gl.graph(self.camera_fps, graph_type="distance", axis="x", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "distx.png"))
+        gl.graph(self.camera_fps, graph_type="distance", axis="y", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "disty.png"))
+        gl.graph(self.camera_fps, graph_type="distance", axis="z", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "distz.png"))

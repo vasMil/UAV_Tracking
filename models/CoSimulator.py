@@ -4,11 +4,12 @@ import os
 import time
 
 import airsim
+import torch
 
 from GlobalConfig import GlobalConfig as config
 from models.LeadingUAV import LeadingUAV
 from models.EgoUAV import EgoUAV
-from tracking_logging.logger import Logger, GraphLogs
+from models.logger import Logger, GraphLogs
 from utils.simulation import getTestPath
 
 class CoSimulator():
@@ -127,6 +128,9 @@ class CoSimulator():
 
     def hook_camera_frame_capture(self):
         self.camera_frame = self.egoUAV._getImage()
+        if self.camera_frame.size() != torch.Size([3,  config.img_height, config.img_width]):
+            raise Exception("Last captured frame has unexpected size!")
+
         self.logger.create_frame(self.camera_frame,
                                  is_bbox_frame=(self.frame_idx % round(self.sim_fps/self.infer_freq_Hz) == 0)
         )

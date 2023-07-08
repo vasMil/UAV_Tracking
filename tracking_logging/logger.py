@@ -392,7 +392,8 @@ class GraphLogs:
         # Populate the estimation list
         for info in self.frame_info:
             if info[est_key] is None:
-                est_info.append(None)
+                est_info.append(np.nan)
+                continue
             est_info.append(np.linalg.norm(np.array(info[est_key])))
         # Covert the x axis from frame index to time
         mult_factor = 1/fps
@@ -412,11 +413,13 @@ class GraphLogs:
 
         for info in self.frame_info:
             if info["est_ego_pos"] is None or info["est_lead_pos"] is None:
-                est_dist.append(None)
-                break
+                est_dist.append(np.nan)
+                continue
             ego_pos = np.array(info["est_ego_pos"])
+            ego_pos = np.ma.array(ego_pos, mask=np.isnan(ego_pos))
             lead_pos = np.array(info["est_lead_pos"])
-            est_dist.append(np.linalg.norm(lead_pos - ego_pos))
+            lead_pos = np.ma.array(lead_pos, mask=np.isnan(lead_pos))
+            est_dist.append(np.linalg.norm(ego_pos - lead_pos))
 
         mult_factor = 1/fps
         x_axis = [x*mult_factor for x in range(0, len(self.frame_info))]

@@ -126,9 +126,9 @@ class CoSimulator():
             self.exit()
 
     def hook_camera_frame_capture(self):
-        camera_frame = self.egoUAV._getImage()
-        self.logger.create_frame(camera_frame,
-                            is_bbox_frame=(self.frame_idx % round(self.sim_fps/self.infer_freq_Hz) == 0)
+        self.camera_frame = self.egoUAV._getImage()
+        self.logger.create_frame(self.camera_frame,
+                                 is_bbox_frame=(self.frame_idx % round(self.sim_fps/self.infer_freq_Hz) == 0)
         )
         self.camera_frame_idx += 1
 

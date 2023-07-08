@@ -113,5 +113,5 @@ class GlobalConfig:
     camera_fps = 30
     infer_freq_Hz = 30
     filter_freq_Hz = 30
-    filter_type: Literal["None", "KF"] = "None"
+    filter_type: Literal["None", "KF"] = "KF"
     leadingUAV_update_vel_interval_s = 2

@@ -6,6 +6,7 @@ import time
 import airsim
 import torch
 
+from project_types import Status_t, _map_to_status_code
 from GlobalConfig import GlobalConfig as config
 from models.LeadingUAV import LeadingUAV
 from models.EgoUAV import EgoUAV
@@ -21,6 +22,7 @@ class CoSimulator():
                  infer_freq_Hz: int = config.infer_freq_Hz,
                  filter_type: Literal["None", "KF"] = config.filter_type,
                  filter_freq_Hz: int = config.filter_freq_Hz,
+                 max_time_lead_is_lost_s: int = config.max_time_lead_is_lost_s
         ):
             if sim_fps < camera_fps:
                 raise Exception("sim_fps cannot be less than camera_fps")
@@ -35,12 +37,14 @@ class CoSimulator():
             self.camera_fps = camera_fps
             self.infer_freq_Hz = infer_freq_Hz
             self.filter_type = filter_type
+            self.max_time_lead_is_lost_s = max_time_lead_is_lost_s
             if config.filter_type == "KF":
                 self.filter_freq_Hz = filter_freq_Hz
             else:
                 self.filter_freq_Hz = infer_freq_Hz
             self.done: bool = False
-            self.status: int = 0
+            self.status: int = _map_to_status_code("Running")
+            self.lost_lead_infer_frame_cnt = 0
 
             # Create a client to communicate with the UE
             self.client = airsim.MultirotorClient()
@@ -61,18 +65,20 @@ class CoSimulator():
                                  simulation_time_s=simulation_time_s,
                                  camera_fps=camera_fps,
                                  infer_freq_Hz=infer_freq_Hz,
-                                 leadingUAV_update_vel_interval_s=leadingUAV_update_vel_interval_s
+                                 leadingUAV_update_vel_interval_s=leadingUAV_update_vel_interval_s,
+                                 filter_type = filter_type,
+                                 filter_freq_Hz = filter_freq_Hz,
+                                 max_time_lead_is_lost_s = max_time_lead_is_lost_s
                             )
-
   
     def start(self):
-        # Move up so you minimize shadows
-        self.leadingUAV.moveByVelocityAsync(0, 0, -5, 10)
-        self.egoUAV.moveByVelocityAsync(0, 0, -5, 10)
-        self.egoUAV.lastAction.join()
-        self.leadingUAV.lastAction.join()
-        # Wait for the vehicles to stabilize
-        time.sleep(10)
+        # # Move up so you minimize shadows
+        # self.leadingUAV.moveByVelocityAsync(0, 0, -5, 10)
+        # self.egoUAV.moveByVelocityAsync(0, 0, -5, 10)
+        # self.egoUAV.lastAction.join()
+        # self.leadingUAV.lastAction.join()
+        # # Wait for the vehicles to stabilize
+        # time.sleep(10)
 
         # Pause the simulation
         self.client.simPause(True)
@@ -85,9 +91,8 @@ class CoSimulator():
         self.orient, self.prev_orient = self.egoUAV.getPitchRollYaw(), self.egoUAV.getPitchRollYaw()
         self.camera_frame_idx, self.prev_camera_frame_idx = -1, -1
 
-
     def _advance(self):
-        print(f"\nFRAME: {self.frame_idx}")
+        # print(f"\nFRAME: {self.frame_idx}")
 
         if self.frame_idx % round(self.sim_fps/self.camera_fps) == 0:
             self.hook_camera_frame_capture()
@@ -100,7 +105,9 @@ class CoSimulator():
         # this way we also simulate the delay between the capture of the frame
         # and the output of the NN for this frame.
         if self.frame_idx % round(self.sim_fps/self.infer_freq_Hz) == 0:
-            self.hook_net_inference()
+            still_tracking = self.hook_net_inference()
+            self.lost_lead_infer_frame_cnt = 0 if still_tracking else self.lost_lead_infer_frame_cnt+1
+
 
         # If we haven't yet decided on the movement, due to the inference frequency limitation
         # and we use a Kalman Filter, check if it is time to advance the KF.
@@ -114,7 +121,20 @@ class CoSimulator():
         
         # Check if simulation time limit has been reached.
         if self.frame_idx == self.simulation_time_s*self.sim_fps:
-            self.finalize()
+            self.finalize("Time's up")
+        # Check if we lost the LeadingUAV
+        elif self.lost_lead_infer_frame_cnt == (self.infer_freq_Hz*self.max_time_lead_is_lost_s):
+            print(f"The LeadingUAV was lost for {self.max_time_lead_is_lost_s} seconds!")
+            self.finalize("LeadingUAV lost")
+        # Check for collisions
+        elif self.leadingUAV.simGetCollisionInfo().object_name == config.egoUAV_name:
+            print(f"Collision between the two UAVs detected!")
+            self.finalize("EgoUAV and LeadingUAV collision")
+        elif self.leadingUAV.simGetCollisionInfo().has_collided or self.egoUAV.simGetCollisionInfo().has_collided:
+            uav_collided_name = self.leadingUAV.name if self.leadingUAV.simGetCollisionInfo().has_collided else self.egoUAV.name
+            status: Status_t = "LeadingUAV collision" if self.leadingUAV.simGetCollisionInfo().has_collided else "EgoUAV collision"
+            print(f"The {uav_collided_name} crashed!")
+            self.finalize(status)
 
     def advance(self):
         try:
@@ -123,8 +143,7 @@ class CoSimulator():
             print("There was an error, writing setup file and releasing AirSim...")
             print("\n" + "*"*10 + " THE ERROR MESSAGE " + "*"*10)
             traceback.print_exc()
-            self.status = -1
-            self.exit()
+            self.finalize("Error")
 
     def hook_camera_frame_capture(self):
         self.camera_frame = self.egoUAV._getImage()
@@ -141,21 +160,25 @@ class CoSimulator():
         # if self.frame_idx == 0:
         #     self.leadingUAV.moveOnPathAsync(getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position))
 
-    def hook_net_inference(self):
+    def hook_net_inference(self) -> bool:
+        """
+        This function is called each time we want to evaluate a frame, in order
+        to detect the LeadingUAV.
+
+        Returns:
+        A boolean that is True if the LeadingUAV was detected inside the frame.
+        Else it returns False.
+        """
         # Run egoUAV's detection net, save the frame with all
         # required information. Hold on to the bbox, to move towards it when the
         # next frame for evaluation is captured.
         bbox, score = self.egoUAV.net.eval(self.camera_frame, 0)
-        orient = self.egoUAV.getPitchRollYaw()
+        orient = self.egoUAV.getPitchRollYaw()         
 
         # There is no way we have a bbox when just inserting the first frame to the logger
         if self.frame_idx != 0:
             # Perform the movement for the previous detection
             _, est_frame_info = self.egoUAV.moveToBoundingBoxAsync(self.prev_bbox, self.prev_orient, dt=(1/self.filter_freq_Hz))
-            if self.prev_score and self.prev_score >= config.score_threshold:
-                print(f"UAV detected {self.prev_score}, moving towards it...")
-            else:
-                print("Lost tracking!!!")
         
             # Update the frame in the logger
             self.logger.update_frame(bbox=self.prev_bbox, est_frame_info=est_frame_info, camera_frame_idx=self.prev_camera_frame_idx)
@@ -166,25 +189,27 @@ class CoSimulator():
         self.prev_score = score
         self.prev_orient = orient
         self.prev_camera_frame_idx = self.camera_frame_idx
+        return True if bbox else False
 
     def hook_filter_advance_only(self):
         self.egoUAV.advanceUsingFilter(dt=(1/self.filter_freq_Hz))
 
-
-    def finalize(self):
+    def finalize(self, status: Status_t):
         if self.done == True:
             return
+        self.done = True
+        self.status = _map_to_status_code(status)
         # Save the last evaluated bbox
         _, est_frame_info = self.egoUAV.moveToBoundingBoxAsync(self.bbox, self.orient, dt=(1/self.filter_freq_Hz))
         self.logger.update_frame(self.bbox, est_frame_info, self.camera_frame_idx)
         # Save any leftorver frames
         self.logger.save_frames(finalize=True)
+        
+        # Output some statistics
+        print(f"Simulation run for {self.frame_idx/self.sim_fps} seconds")
+        self.exit(status)
 
-        self.exit()
-
-
-    def exit(self):
-        self.done = True
+    def exit(self, status: Status_t):
         # Free the simulation and reset the vehicles
         self.client.simPause(False)
         self.egoUAV.disable()
@@ -193,13 +218,12 @@ class CoSimulator():
 
         # Write a setup.txt file containing all the important configuration options used for
         # this run
-        self.logger.write_setup()
+        self.logger.write_setup(status)
         self.logger.dump_logs()
 
         # Write the mp4 file
         self.logger.save_frames(finalize=True)
         self.logger.write_video()
-
 
     def export_graphs(self):
         gl = GraphLogs(frame_info=self.logger.updated_info_per_frame)

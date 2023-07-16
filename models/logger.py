@@ -1,4 +1,4 @@
-from typing import List, Optional, Literal, Tuple
+from typing import List, Optional, Literal, Tuple, Callable
 from operator import itemgetter
 import datetime, time
 import os
@@ -9,7 +9,9 @@ import pickle
 import matplotlib.pyplot as plt
 import cv2
 import numpy as np
+import plotext as tplt
 
+from project_types import Status_t
 from models.EgoUAV import EgoUAV
 from models.LeadingUAV import LeadingUAV
 from models.BoundingBox import BoundingBox
@@ -44,7 +46,10 @@ class Logger:
                  simulation_time_s: int = config.simulation_time_s,
                  camera_fps: int = config.camera_fps,
                  infer_freq_Hz: int = config.infer_freq_Hz,
-                 leadingUAV_update_vel_interval_s: int = config.leadingUAV_update_vel_interval_s
+                 leadingUAV_update_vel_interval_s: int = config.leadingUAV_update_vel_interval_s,
+                 filter_type: Literal["None", "KF"] = config.filter_type,
+                 filter_freq_Hz: int = config.filter_freq_Hz,
+                 max_time_lead_is_lost_s: int = config.max_time_lead_is_lost_s
             ) -> None:
         # Settings
         self.egoUAV = egoUAV
@@ -54,6 +59,9 @@ class Logger:
         self.camera_fps = camera_fps
         self.infer_freq_Hz = infer_freq_Hz
         self.leadingUAV_update_vel_interval_s = leadingUAV_update_vel_interval_s
+        self.filter_type = filter_type
+        self.filter_freq_Hz = filter_freq_Hz
+        self.max_time_lead_is_lost_s = max_time_lead_is_lost_s
         self.image_res_incr_factor = 3
 
         # Folder and File namse
@@ -74,6 +82,12 @@ class Logger:
         self.frame_cnt: int = 0
         self.next_frame_idx_to_save: int = 0
         self.last_frames_with_bbox_idx: List[int] = []
+
+        # Terminal Plots
+        self.tprog = TerminalProgress(names=["Progress", "Distance"],
+                                      limits=[self.simulation_time_s*self.camera_fps, 20],
+                                      green_area_func=[lambda p: p > self.simulation_time_s*self.camera_fps*0.9, 
+                                                       lambda d: d < 3.5])
 
     def create_frame(self, frame: torch.Tensor, is_bbox_frame: bool):
         """
@@ -118,6 +132,9 @@ class Logger:
         self.info_per_frame.append(frame_info)
         self.frames.append(frame)
         self.frame_cnt += 1
+
+        # Update the progress bars
+        self.tprog.update([self.frame_cnt, np.linalg.norm((ego_pos - lead_pos).to_numpy_array()).item()])
 
     def update_frame(self,
                      bbox: Optional[BoundingBox],
@@ -227,13 +244,23 @@ class Logger:
         # Update the index of the next frame you want to save
         self.next_frame_idx_to_save += idx
 
-    def write_setup(self):
+    def write_setup(self, status: Status_t):
         """
         Writes a txt file that contains useful information for the simulation run.
         It is mostly about GlobalConfig variables.
         """
         with open(self.setup_file, 'w') as f:
-            f.write(f"# The upper an lower limit for the velocity on each axis of both UAVs\n"
+            f.write(f"# The status of the run (why did the run terminate? | Normal = time finished)\n"
+                    f"status = {status}\n"
+                    f"\n"
+                    f"# Type of filter used by the controller to filter the offset measurements\n"
+                    f"filter_type = {self.filter_type}\n"
+                    f"filter_freq_Hz = {self.filter_freq_Hz}\n"
+                    f"\n"
+                    f"# The max acceptable amount of time the EgoUAV has not detected the LeadingUAV\n"
+                    f"max_time_lead_is_lost_s = {self.max_time_lead_is_lost_s}\n"
+                    f"\n"
+                    f"# The upper an lower limit for the velocity on each axis of both UAVs\n"
                     f"max_vx, max_vy, max_vz = {config.max_vx},  {config.max_vy},  {config.max_vz}\n"
                     f"min_vx, min_vy, min_vz = {config.min_vx}, {config.min_vy}, {config.min_vz}\n"
                     f"\n"
@@ -282,7 +309,7 @@ class Logger:
         files = os.listdir(self.images_path)
         files.sort()
         # Use cv2's video writer
-        fourcc = cv2.VideoWriter_fourcc(*'MP4V')
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         video = cv2.VideoWriter(self.video_path,
                                 fourcc,
                                 self.camera_fps,
@@ -361,20 +388,8 @@ class GraphLogs:
     A class that utilizes, the information logged and creates useful Graphs,
     for the state of the simulation at each timestep (at which the logger recorded info).
     """
-    def __init__(self,
-                 pickle_file: Optional[str] = None,
-                 frame_info: Optional[List[FrameInfo]] = None
-            ) -> None:
-        if pickle_file is None and frame_info is None:
-            raise Exception("One of two arguments must be not none")
-        if pickle_file and frame_info:
-            raise Exception("You should only pass one of the two arguments")
-
-        if pickle_file:
-            with open(pickle_file, "rb") as f:
-                self.frame_info: List[FrameInfo] = pickle.load(f)
-        elif frame_info:
-            self.frame_info = frame_info
+    def __init__(self, frame_info: List[FrameInfo]) -> None:
+        self.frame_info = frame_info
 
     def _map_axis_to_idx(self,
                          axis: Literal["x", "y", "z", "all"]
@@ -454,3 +469,33 @@ class GraphLogs:
         fig, ax = plt.subplots()
         self._graph(ax, fps, graph_type, axis, vehicle_name, sim_color, est_color)
         fig.savefig(filename)
+
+
+class TerminalProgress():
+    def __init__(self,
+                 names: List[str],
+                 limits: List[int],
+                 green_area_func: List[Optional[Callable[[float], bool]]]
+        ):
+        self.limits = limits
+        self.green_area_func = green_area_func
+        self.names = names
+        self.num_lines_to_clear = 3*len(names)
+        tplt.interactive(True)
+        self.update([0 for _ in names])
+
+    def _sel_color(self, value: float, idx: int) -> str:
+        if not self.green_area_func[idx]:
+            return "blue"
+        return "green" if self.green_area_func[idx](value) else "red" # type: ignore
+    
+    def update(self, values: List[float]) -> Optional[bool]:
+        assert(len(values) == len(self.names))
+
+        tplt.clt(lines=self.num_lines_to_clear)
+        for idx, value in enumerate(values):
+            tplt.simple_bar([self.names[idx], "Limit"],
+                            [value, self.limits[idx]],
+                            color=[self._sel_color(value, idx), "blue"],
+                            width=50)
+            print("")        

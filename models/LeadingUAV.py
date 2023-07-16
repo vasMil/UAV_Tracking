@@ -28,7 +28,7 @@ class LeadingUAV(UAV):
         self._randomState = RandomState(seed)
 
 
-    def random_move(self, command_time: float) -> Tuple[Future, torch.Tensor]:
+    def random_move(self, command_time: float, silence: bool = True) -> Tuple[Future, torch.Tensor]:
         """
         Moves the UAV using random velocity values for the x and y axis and a
         height value for the z axis.
@@ -92,7 +92,8 @@ class LeadingUAV(UAV):
                                                    command_time,
                                                    yaw_mode=airsim.YawMode(False, math.degrees(math.atan(vy/vx)))
                                                 )
-        print(f"{self.name} moveByVelocityAsync: vx = {vx}, vy = {vy}, vz = {vz}")
+        if not silence:
+            print(f"{self.name} moveByVelocityAsync: vx = {vx}, vy = {vy}, vz = {vz}")
         return (self.lastAction, velocity_vec)
     
     def _get_FOV_bounds(self, x_dist_m: float) -> Tuple[float, float, float, float]:

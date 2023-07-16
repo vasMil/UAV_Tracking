@@ -3,6 +3,10 @@ from typing import Optional, Literal
 
 class GlobalConfig:
     """ Contains all the configuration options used in this project """
+    # Vehicle names as defined in setting.json file
+    egoUAV_name = "EgoUAV"
+    leadingUAV_name = "LeadingUAV"
+
     # The port number airsim if configured to listen to
     port = 41451
     # The seed used for the LeadingUAV random movements
@@ -109,9 +113,10 @@ class GlobalConfig:
 
     # Logger settings
     sim_fps = 60
-    simulation_time_s = 10
+    simulation_time_s = 60
     camera_fps = 30
     infer_freq_Hz = 30
     filter_freq_Hz = 30
     filter_type: Literal["None", "KF"] = "KF"
     leadingUAV_update_vel_interval_s = 2
+    max_time_lead_is_lost_s = 2

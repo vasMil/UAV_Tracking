@@ -47,7 +47,7 @@ if __name__ == '__main__':
         print("There was an error, writing setup file and releasing AirSim...")
         print("\n" + "*"*10 + " THE ERROR MESSAGE " + "*"*10)
         traceback.print_exc()
-        co_sim.status = -1
+        co_sim.finalize("Error")
     finally:
-        co_sim.finalize()
+        co_sim.finalize("Time's up")
         co_sim.export_graphs()

@@ -383,6 +383,28 @@ class Logger:
         }
         return frameInfo
 
+    def print_statistics(self):
+        n = len(self.updated_info_per_frame)
+        dist_mse: float = 0.
+        lead_vel_mse: Optional[float] = 0.
+        avg_true_dist: float = 0.
+        for info in self.updated_info_per_frame:
+            sim_dist = np.linalg.norm(np.array(info["sim_ego_pos"]) - np.array(info["sim_lead_pos"]))
+            avg_true_dist += sim_dist.item()
+            
+            if info["est_lead_pos"] and info["est_ego_pos"]:
+                est_dist = np.linalg.norm(np.array(info["est_ego_pos"]) - np.array(info["est_lead_pos"]))
+                dist_mse += (sim_dist - est_dist).item()**2
+
+            if info["err_lead_vel"] and lead_vel_mse:
+                lead_vel_mse += np.linalg.norm(np.array(info["err_lead_vel"])).item()**2
+            else:
+                lead_vel_mse = None
+        print(f"dist_mse: {dist_mse/n}")
+        print(f"lead_vel_mse: {lead_vel_mse/n if lead_vel_mse else None}")
+        print(f"avg_true_dist: {avg_true_dist/n}")
+
+
 class GraphLogs:
     """
     A class that utilizes, the information logged and creates useful Graphs,
@@ -481,6 +503,7 @@ class TerminalProgress():
         self.green_area_func = green_area_func
         self.names = names
         self.num_lines_to_clear = 3*len(names)
+        self.init_plot = True
         tplt.interactive(True)
         self.update([0 for _ in names])
 
@@ -491,11 +514,13 @@ class TerminalProgress():
     
     def update(self, values: List[float]) -> Optional[bool]:
         assert(len(values) == len(self.names))
+        if not self.init_plot:
+            tplt.clt(lines=self.num_lines_to_clear)
+        self.init_plot = False
 
-        tplt.clt(lines=self.num_lines_to_clear)
         for idx, value in enumerate(values):
             tplt.simple_bar([self.names[idx], "Limit"],
                             [value, self.limits[idx]],
                             color=[self._sel_color(value, idx), "blue"],
                             width=50)
-            print("")        
+            print("")

@@ -72,13 +72,13 @@ class CoSimulator():
                             )
   
     def start(self):
-        # # Move up so you minimize shadows
-        # self.leadingUAV.moveByVelocityAsync(0, 0, -5, 10)
-        # self.egoUAV.moveByVelocityAsync(0, 0, -5, 10)
-        # self.egoUAV.lastAction.join()
-        # self.leadingUAV.lastAction.join()
-        # # Wait for the vehicles to stabilize
-        # time.sleep(10)
+        # Move up so you minimize shadows
+        self.leadingUAV.moveByVelocityAsync(0, 0, -5, 10)
+        self.egoUAV.moveByVelocityAsync(0, 0, -5, 10)
+        self.egoUAV.lastAction.join()
+        self.leadingUAV.lastAction.join()
+        # Wait for the vehicles to stabilize
+        time.sleep(10)
 
         # Pause the simulation
         self.client.simPause(True)
@@ -156,9 +156,9 @@ class CoSimulator():
         self.camera_frame_idx += 1
 
     def hook_leadingUAV_move(self):
-        self.leadingUAV.random_move(self.leadingUAV_update_vel_interval_s)
-        # if self.frame_idx == 0:
-        #     self.leadingUAV.moveOnPathAsync(getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position))
+        # self.leadingUAV.random_move(self.leadingUAV_update_vel_interval_s)
+        if self.frame_idx == 0:
+            self.leadingUAV.moveOnPathAsync(getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position))
 
     def hook_net_inference(self) -> bool:
         """
@@ -220,6 +220,7 @@ class CoSimulator():
         # this run
         self.logger.write_setup(status)
         self.logger.dump_logs()
+        self.logger.print_statistics()
 
         # Write the mp4 file
         self.logger.save_frames(finalize=True)

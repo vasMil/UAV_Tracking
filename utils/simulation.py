@@ -70,14 +70,16 @@ def getTestPath(start_pos: airsim.Vector3r) -> List[airsim.Vector3r]:
         airsim.Vector3r(0, -10, 0),   # Test y axis - moving faster left
 
         airsim.Vector3r(20, 0, 0),    # Move forward so you will not crush on the EgoUAV
-        airsim.Vector3r(2, 0, -10),   # Test z axis - moving fast up
+        airsim.Vector3r(1, 0, -10),   # Test z axis - moving fast up
         airsim.Vector3r(20, 0, 0),    # Move forward so you will not crush on the EgoUAV
-        airsim.Vector3r(2, 0, 10),    # Test z axis - moving fast down
+        airsim.Vector3r(1, 0, 10),    # Test z axis - moving fast down
         airsim.Vector3r(20, 0, 0),    # Move forward so you will not crush on the EgoUAV
-        airsim.Vector3r(0, 0, -10),   # Test z axis - moving faster up
-        airsim.Vector3r(20, 0, 0),    # Move forward so you will not crush on the EgoUAV
-        airsim.Vector3r(0, 0, 10),    # Test z axis - moving faster down
-        airsim.Vector3r(20, 0, 0),    # Move forward so you will not crush on the EgoUAV
+
+        # Other maneuvers
+        airsim.Vector3r(5, 5, -5),
+        airsim.Vector3r(0, -5, -10),
+        airsim.Vector3r(10, 20, -10),
+        airsim.Vector3r(5, -10, -15),
     ]
 
     # Sum each point with the previous, in order to get

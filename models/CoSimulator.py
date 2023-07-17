@@ -146,9 +146,13 @@ class CoSimulator():
             self.finalize("Error")
 
     def hook_camera_frame_capture(self):
+        fail_cnt = 0
         self.camera_frame = self.egoUAV._getImage()
-        if self.camera_frame.size() != torch.Size([3,  config.img_height, config.img_width]):
-            raise Exception("Last captured frame has unexpected size!")
+        while self.camera_frame.size() != torch.Size([3,  config.img_height, config.img_width]):
+            fail_cnt +=1
+            self.camera_frame = self.egoUAV._getImage()
+            if fail_cnt > 4:
+                raise Exception("Last captured frame has unexpected size!")
 
         self.logger.create_frame(self.camera_frame,
                                  is_bbox_frame=(self.frame_idx % round(self.sim_fps/self.infer_freq_Hz) == 0)
@@ -156,9 +160,9 @@ class CoSimulator():
         self.camera_frame_idx += 1
 
     def hook_leadingUAV_move(self):
-        # self.leadingUAV.random_move(self.leadingUAV_update_vel_interval_s)
-        if self.frame_idx == 0:
-            self.leadingUAV.moveOnPathAsync(getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position))
+        self.leadingUAV.random_move(self.leadingUAV_update_vel_interval_s)
+        # if self.frame_idx == 0:
+            # self.leadingUAV.moveOnPathAsync(getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position))
 
     def hook_net_inference(self) -> bool:
         """

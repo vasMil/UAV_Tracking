@@ -44,6 +44,12 @@ class LeadingUAV(UAV):
         Using this information we can ensure that the z value cannot
         be less than self.min_z
 
+        Returns:
+        A Tuple containing:
+        - The Future returned by the AirSim API, which is also available
+        at self.lastAction
+        - A torch.Tensor with the random velocity applied.
+
         More Info:
         Since the velocity is a vector in 3D space, it should have a constant
         magnitude equal to config.uav_velocity and a changing direction,

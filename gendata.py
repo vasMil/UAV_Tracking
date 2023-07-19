@@ -15,10 +15,13 @@ from GlobalConfig import GlobalConfig as config
 def create_sample(
         egoUAV: EgoUAV,
         leadingUAV: LeadingUAV,
+        ego_box_lims_x: Tuple[float, float] = config.rand_move_box_x,
+        ego_box_lims_y: Tuple[float, float] = config.rand_move_box_y,
+        ego_box_lims_z: Tuple[float, float] = config.rand_move_box_z
     ) -> Tuple[torch.Tensor, airsim.Vector3r]:
     """
     Given two UAVs return a tuple consisting of an image (torch.Tensor) and the offset.
-    This iamge is egoUAV's perspective and contains the leadingUAV.
+    This image is egoUAV's perspective and contains the leadingUAV.
     The second element of the tuple is the offset of the leadingUAV with respect to the
     egoUAV's position.
     (This offset is the distance between the centers of the two UAVs.)
@@ -27,9 +30,9 @@ def create_sample(
     while True:
         # The location to move the ego vehicle at
         ego_pos = airsim.Vector3r(
-            random.uniform(*config.rand_move_box_x),
-            random.uniform(*config.rand_move_box_y),
-            random.uniform(*config.rand_move_box_z)
+            random.uniform(*ego_box_lims_x),
+            random.uniform(*ego_box_lims_y),
+            random.uniform(*ego_box_lims_z)
         )
 
         # Reset the orientation of the egoUAV before making any further changes

@@ -1,5 +1,5 @@
+from typing import Optional, Literal, Tuple
 import math
-from typing import Optional, Literal
 
 class GlobalConfig:
     """ Contains all the configuration options used in this project """
@@ -20,8 +20,8 @@ class GlobalConfig:
     score_threshold: float = 0.1
 
     # The upper an lower limit for the velocity on each axis of both UAVs
-    max_vx, max_vy, max_vz = 5.,  5,  5
-    min_vx, min_vy, min_vz = 1., -5, -5
+    max_vx, max_vy, max_vz = 5.,  5,  2.5
+    min_vx, min_vy, min_vz = 1., -5, -2.5
 
     # How much time should each move airsim api call last for
     # (ex. moveByVelocityAsync, duration argument)
@@ -65,9 +65,9 @@ class GlobalConfig:
     min_dist = 1.5
     max_dist = 10
     # Box to allow random movement of the egoUAV in
-    rand_move_box_x = (-10, 10)
-    rand_move_box_y = (-10, 10)
-    rand_move_box_z = (-10, -1) # Min dist from the ground is -1 (i.e. 1m above ground level)
+    rand_move_box_x: Tuple[float, float] = (-10., 10.,)
+    rand_move_box_y: Tuple[float, float] = (-10., 10.,)
+    rand_move_box_z: Tuple[float, float] = (-10., -1.,) # Min dist from the ground is -1 (i.e. 1m above ground level)
 
     # The sample images are stored as (image_index).(fromat), where the image_index is a number
     # in [0,9999] thus we add leading zeros to have a uniform representation of the indexes

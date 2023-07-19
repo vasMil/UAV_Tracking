@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional, List
 import traceback
 import os
 import time
@@ -52,6 +52,7 @@ class CoSimulator():
             print(f"Vehicle List: {self.client.listVehicles()}\n")
             # Reset the position of the UAVs (just to make sure)
             self.client.reset()
+            self.client.simPause(False)
             # Wait for the takeoff to complete
             self.leadingUAV = LeadingUAV("LeadingUAV")
             self.egoUAV = EgoUAV("EgoUAV", filter_type=filter_type)
@@ -70,19 +71,13 @@ class CoSimulator():
                                  filter_freq_Hz = filter_freq_Hz,
                                  max_time_lead_is_lost_s = max_time_lead_is_lost_s
                             )
-  
-    def start(self):
-        # Move up so you minimize shadows
-        self.leadingUAV.moveByVelocityAsync(0, 0, -5, 10)
-        self.egoUAV.moveByVelocityAsync(0, 0, -5, 10)
-        self.egoUAV.lastAction.join()
-        self.leadingUAV.lastAction.join()
-        # Wait for the vehicles to stabilize
-        time.sleep(10)
 
-        # Pause the simulation
-        self.client.simPause(True)
-        
+            # Define a variable that you may update inside hook_leadingUAV_move
+            # with the expected path, so you may later add this path to the
+            # movement plot
+            self.leading_path: Optional[List[airsim.Vector3r]] = None
+
+    def start(self):
         # Initialize the control variables
         self.frame_idx = 0
         self.camera_frame = self.egoUAV._getImage()
@@ -91,7 +86,18 @@ class CoSimulator():
         self.orient, self.prev_orient = self.egoUAV.getPitchRollYaw(), self.egoUAV.getPitchRollYaw()
         self.camera_frame_idx, self.prev_camera_frame_idx = -1, -1
 
-    def _advance(self):
+        # Move up so you minimize shadows
+        self.leadingUAV.moveByVelocityAsync(0, 0, -5, 20)
+        self.egoUAV.moveByVelocityAsync(0, 0, -5, 20)
+        self.egoUAV.lastAction.join()
+        self.leadingUAV.lastAction.join()
+        # Wait for the vehicles to stabilize
+        time.sleep(20)
+
+        # Pause the simulation
+        self.client.simPause(True)
+
+    def advance(self):
         # print(f"\nFRAME: {self.frame_idx}")
 
         if self.frame_idx % round(self.sim_fps/self.camera_fps) == 0:
@@ -136,15 +142,6 @@ class CoSimulator():
             print(f"The {uav_collided_name} crashed!")
             self.finalize(status)
 
-    def advance(self):
-        try:
-            self._advance()
-        except Exception:
-            print("There was an error, writing setup file and releasing AirSim...")
-            print("\n" + "*"*10 + " THE ERROR MESSAGE " + "*"*10)
-            traceback.print_exc()
-            self.finalize("Error")
-
     def hook_camera_frame_capture(self):
         fail_cnt = 0
         self.camera_frame = self.egoUAV._getImage()
@@ -160,9 +157,10 @@ class CoSimulator():
         self.camera_frame_idx += 1
 
     def hook_leadingUAV_move(self):
-        self.leadingUAV.random_move(self.leadingUAV_update_vel_interval_s)
-        # if self.frame_idx == 0:
-            # self.leadingUAV.moveOnPathAsync(getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position))
+        # self.leadingUAV.random_move(self.leadingUAV_update_vel_interval_s)
+        if self.frame_idx == 0:
+            self.leading_path = getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position)
+            self.leadingUAV.moveOnPathAsync(self.leading_path)
 
     def hook_net_inference(self) -> bool:
         """
@@ -185,7 +183,7 @@ class CoSimulator():
             _, est_frame_info = self.egoUAV.moveToBoundingBoxAsync(self.prev_bbox, self.prev_orient, dt=(1/self.filter_freq_Hz))
         
             # Update the frame in the logger
-            self.logger.update_frame(bbox=self.prev_bbox, est_frame_info=est_frame_info, camera_frame_idx=self.prev_camera_frame_idx)
+            self.logger.update_frame(camera_frame_idx=self.prev_camera_frame_idx, bbox=self.prev_bbox, est_frame_info=est_frame_info)
             self.logger.save_frames()
 
         # Update
@@ -197,38 +195,6 @@ class CoSimulator():
 
     def hook_filter_advance_only(self):
         self.egoUAV.advanceUsingFilter(dt=(1/self.filter_freq_Hz))
-
-    def finalize(self, status: Status_t):
-        if self.done == True:
-            return
-        self.done = True
-        self.status = _map_to_status_code(status)
-        # Save the last evaluated bbox
-        _, est_frame_info = self.egoUAV.moveToBoundingBoxAsync(self.bbox, self.orient, dt=(1/self.filter_freq_Hz))
-        self.logger.update_frame(self.bbox, est_frame_info, self.camera_frame_idx)
-        # Save any leftorver frames
-        self.logger.save_frames(finalize=True)
-        
-        # Output some statistics
-        print(f"Simulation run for {self.frame_idx/self.sim_fps} seconds")
-        self.exit(status)
-
-    def exit(self, status: Status_t):
-        # Free the simulation and reset the vehicles
-        self.client.simPause(False)
-        self.egoUAV.disable()
-        self.leadingUAV.disable()
-        self.client.reset()
-
-        # Write a setup.txt file containing all the important configuration options used for
-        # this run
-        self.logger.write_setup(status)
-        self.logger.dump_logs()
-        self.logger.print_statistics()
-
-        # Write the mp4 file
-        self.logger.save_frames(finalize=True)
-        self.logger.write_video()
 
     def export_graphs(self):
         gl = GraphLogs(frame_info=self.logger.updated_info_per_frame)
@@ -254,3 +220,36 @@ class CoSimulator():
         gl.graph(self.camera_fps, graph_type="distance", axis="x", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "distx.png"))
         gl.graph(self.camera_fps, graph_type="distance", axis="y", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "disty.png"))
         gl.graph(self.camera_fps, graph_type="distance", axis="z", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "distz.png"))
+
+        gl.plot_movement_3d(filename=os.path.join(self.logger.parent_folder,"movement.png"), path=self.leading_path)
+
+    def finalize(self, status: Status_t):
+        if self.done == True:
+            return
+        self.done = True
+        self.status = _map_to_status_code(status)
+        # Save the last evaluated bbox
+        _, est_frame_info = self.egoUAV.moveToBoundingBoxAsync(self.bbox, self.orient, dt=(1/self.filter_freq_Hz))
+        self.logger.update_frame(camera_frame_idx=self.camera_frame_idx, bbox=self.bbox, est_frame_info=est_frame_info)
+        # Save any leftorver frames
+        self.logger.save_frames(finalize=True)
+        
+        # Output some statistics
+        print(f"Simulation run for {self.frame_idx/self.sim_fps} seconds")
+        self.exit(status)
+
+    def exit(self, status: Status_t):
+        # Update the client, since an interrupt will result to bad behaviour of the client.
+        # It will raise a "RuntimeError: IOLoop is already running" when trying to invoke any of it's methods
+        self.client = airsim.MultirotorClient()
+
+        # Free the simulation and reset the vehicles
+        self.egoUAV.disable()
+        self.leadingUAV.disable()
+        self.client.reset()
+        self.client.simPause(False)
+        
+        # Stop the logger
+        self.logger.exit(status=status)
+        self.export_graphs()
+        print(f"\nCoSimulator exits with status: {status}\n")

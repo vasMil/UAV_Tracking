@@ -44,10 +44,16 @@ if __name__ == '__main__':
         while not co_sim.done and co_sim.status == 0:
             co_sim.advance()
     except Exception:
+        co_sim.finalize("Error")
         print("There was an error, writing setup file and releasing AirSim...")
         print("\n" + "*"*10 + " THE ERROR MESSAGE " + "*"*10)
         traceback.print_exc()
-        co_sim.finalize("Error")
     finally:
         co_sim.finalize("Time's up")
-        co_sim.export_graphs()
+
+    # from utils.kalman_filter import complex_process_noise_estim, estimate_process_noise
+    # print("MOVEMENT ESTIMATION:")
+    # print(complex_process_noise_estim(num_samples=10000))
+    # print("\n")
+    # print("HOVER ESTIMATION:")
+    # print(estimate_process_noise(num_samples=10000))

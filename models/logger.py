@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import cv2
 import numpy as np
 import plotext as tplt
+import airsim
 
 from project_types import Status_t
 from models.EgoUAV import EgoUAV
@@ -78,16 +79,22 @@ class Logger:
         self.frames: List[torch.Tensor] = []
         self.updated_info_per_frame: List[FrameInfo] = []
 
-        # Counters
+        # Logger Utility Counters
         self.frame_cnt: int = 0
         self.next_frame_idx_to_save: int = 0
         self.last_frames_with_bbox_idx: List[int] = []
 
         # Terminal Plots
-        self.tprog = TerminalProgress(names=["Progress", "Distance"],
-                                      limits=[self.simulation_time_s*self.camera_fps, 20],
+        # Counter that will provide us with info on how many frames the LeadingUAV
+        # has been lost.
+        self.lost_for_frames = 0
+        self.tprog = TerminalProgress(names=["Progress", "Distance", "LeadingUAV Lost For"],
+                                      limits=[self.simulation_time_s*self.camera_fps,
+                                              20,
+                                              self.max_time_lead_is_lost_s*self.camera_fps],
                                       green_area_func=[lambda p: p > self.simulation_time_s*self.camera_fps*0.9, 
-                                                       lambda d: d < 3.5])
+                                                       lambda d: d < 3.5,
+                                                       lambda l: l < self.max_time_lead_is_lost_s*self.camera_fps*0.5])
 
     def create_frame(self, frame: torch.Tensor, is_bbox_frame: bool):
         """
@@ -133,60 +140,80 @@ class Logger:
         self.frames.append(frame)
         self.frame_cnt += 1
 
-        # Update the progress bars
-        self.tprog.update([self.frame_cnt, np.linalg.norm((ego_pos - lead_pos).to_numpy_array()).item()])
-
     def update_frame(self,
+                     camera_frame_idx: int,
                      bbox: Optional[BoundingBox],
-                     est_frame_info: EstimatedFrameInfo,
-                     camera_frame_idx: int
+                     est_frame_info: EstimatedFrameInfo
                 ):
         """
-        This method should be called when a bbox is available. This bbox is found
-        on the frame with idx camera_frame_idx in the list with the frames preserved.
+        This method should be called when a bbox is available. This bbox is found\
+        on the frame with idx camera_frame_idx in the list with the frames preserved.\
 
-        Due to the way this logger has been implemented, frames can be saved before the
-        simulation is complete, so we may not run out of memory, if the simulation is run for too long.
-        This creates an indexing chaos, since we also need to be able to track up to which frame we have
-        already saved to the disk and thus remove from the list of frames. Thus even though the camera_frame_idx
-        is not required, it is there to help us assert some conditions, so we are sure everything works as expected.
-        It may be removed in the future.
+        Due to the way this logger has been implemented, frames can be saved before the\
+        simulation is complete, so we may not run out of memory, if the simulation is run for too long.\
+        This creates an indexing chaos, since we also need to be able to track up to which frame we have\
+        already saved to the disk and thus remove from the list of frames.\
+        Thus even though the camera_frame_idx is not required, it is there to help us assert some conditions,\
+        so we make sure everything works as expected. Can be removed in the future.\
 
-        This function mostly helps with the indexing and invokes draw_frame to add the information to the frame.
+        This function mostly helps with the indexing and invokes draw_frame to add the information to the frame.\
         
         Args:
-        - bbox: The bbox we have found.
+        - camera_frame_idx: The (global) index of the camera frame to be updated.\
+        - bbox: The bbox we have found.\
         - est_frame_info: It is an object returned from EgoUAV. It is all the estimations it \
         has made, based on the offset extracted by the bbox. We also log EgoUAV's point of view \
         in order to be able to compare it with the ground truth that has been preserved upon \
         frame's creation (create_frame method).
-        - camera_frame_idx: The index of the camera frame to be updated.
         """
+        # Figure out the global index
         if len(self.last_frames_with_bbox_idx) == 0:
             return
+        # Calculate the global index of the frame, used to index
+        # the info lists. Global meaning the actual index of the frame captured
+        # by the camera, considering the first frame captured be 0.
         g_frame_idx = self.last_frames_with_bbox_idx.pop(0)
-        frame_list_idx = g_frame_idx - self.next_frame_idx_to_save
-        frame = self.frames[frame_list_idx]
+
+        # Make sure the global index calculation scheme above works.
+        # Since it has been thoroughly tested, you may remove the try-except block.
         try:
             assert(self.info_per_frame[g_frame_idx]["frame_idx"] == camera_frame_idx)
         except:
             print(f"Saved frame idx: {self.info_per_frame[g_frame_idx]['frame_idx']}")
             print(f"True frame idx: {camera_frame_idx}")
             raise Exception("FRAME INDEXING ERROR!")
-        self.frames[frame_list_idx] = self.draw_frame(frame, bbox, self.info_per_frame[g_frame_idx], est_frame_info)
+        
+        # The index of the frame on the list (local index, local to the list)
+        frame_list_idx = g_frame_idx - self.next_frame_idx_to_save
+        # Get the frame using the local (to the frame list) index
+        frame = self.frames[frame_list_idx]
+            
+
+        # Merge all info into a FrameInfo object
+        frame_info = self.merge_to_FrameInfo(bbox=bbox,
+                                             sim_info=self.info_per_frame[g_frame_idx],
+                                             est_info=est_frame_info)
+
+        # Add the updated information for the frame to a list
+        self.updated_info_per_frame.append(frame_info)
+
+        # Add the information on the frame
+        self.frames[frame_list_idx] = self.draw_frame(frame, bbox, frame_info)
+        
+        # Update the counter that shows us for how many frames the LeadingUAV
+        # was not found inside our FOV, so you may add it to the progress bar
+        # displayed on the terminal, as the simulation runs.
+        self.lost_for_frames = 0 if frame_info["extra_still_tracking"] == True else self.lost_for_frames+1
+        
+        # Update the progress bars displayed on the terminal
+        ego_pos = np.array(frame_info["sim_ego_pos"])
+        lead_pos = np.array(frame_info["sim_lead_pos"])        
+        self.tprog.update([g_frame_idx, np.linalg.norm((ego_pos - lead_pos)).item(), self.lost_for_frames])
 
     def draw_frame(self,
                    frame: torch.Tensor,
                    bbox: Optional[BoundingBox],
-                   sim_frame_info: GroundTruthFrameInfo,
-                   est_frame_info: EstimatedFrameInfo = {
-                       "egoUAV_target_velocity": None,
-                       "angle_deg": None,
-                       "leadingUAV_position": None,
-                       "leadingUAV_velocity": None,
-                       "egoUAV_position": None,
-                       "still_tracking": None
-                    }
+                   frame_info: FrameInfo
                 ) -> torch.Tensor:
         """
         Merges all information that it is provided and uses utils.image functions
@@ -198,20 +225,10 @@ class Logger:
         It also preserves the merge FrameInfo object to a new list.
         """
         if bbox:
-            # Add info on the camera frame
             frame = add_bbox_to_image(frame, bbox)
 
         frame = increase_resolution(frame, self.image_res_incr_factor)
-
-        # Merge all info into a FrameInfo object and append the information onto the frame
-        frame_info = self.merge_to_FrameInfo(bbox=bbox, sim_info=sim_frame_info, est_info=est_frame_info)
         frame = add_info_to_image(frame, frame_info)
-
-        # Add the updated information for the frame to a list
-        # I do not really worry about the order of the frame_info objects,
-        # since they preserve their global frame index in the field "extra_frame_idx",
-        # we may sort them later
-        self.updated_info_per_frame.append(frame_info)
         return frame
 
     def save_frames(self, finalize: bool = False):
@@ -231,7 +248,8 @@ class Logger:
                 break
             # Make sure that all frames you save have the desired resolution
             if frame.size() == torch.Size([3, config.img_height, config.img_width]):
-                frame = self.draw_frame(frame, None, self.info_per_frame[info_idx])
+                frame_info = self.merge_to_FrameInfo(bbox=None, sim_info=self.info_per_frame[info_idx])
+                frame = self.draw_frame(frame=frame, bbox=None, frame_info=frame_info)
             elif frame.size() != torch.Size([3,
                                              self.image_res_incr_factor*config.img_height,
                                              self.image_res_incr_factor*config.img_width
@@ -328,8 +346,15 @@ class Logger:
     def merge_to_FrameInfo(self,
                            bbox: Optional[BoundingBox],
                            sim_info: GroundTruthFrameInfo,
-                           est_info: EstimatedFrameInfo
-                        ) -> FrameInfo:
+                           est_info: EstimatedFrameInfo = {
+                               "egoUAV_target_velocity": None,
+                               "angle_deg": None,
+                               "leadingUAV_position": None,
+                               "leadingUAV_velocity": None,
+                               "egoUAV_position": None,
+                               "still_tracking": None
+                            }
+        ) -> FrameInfo:
         """
         Merges all provided arguments to a single FrameInfo object,
         that can be later be saved (dump_logs) and/or used to add information
@@ -385,9 +410,14 @@ class Logger:
 
     def print_statistics(self):
         n = len(self.updated_info_per_frame)
-        dist_mse: float = 0.
-        lead_vel_mse: Optional[float] = 0.
         avg_true_dist: float = 0.
+        # Some missing values may occure due to frames not
+        # being fed to our Controller and thus merging a GroundTruthFrameInfo
+        # with an empty EstimatedFrameInfo object (empty -> all dict value none).
+        dist_mse: float = 0.
+        dist_meas_cnt = 0
+        lead_vel_mse: Optional[float] = 0.
+        lead_vel_meas_cnt = 0
         for info in self.updated_info_per_frame:
             sim_dist = np.linalg.norm(np.array(info["sim_ego_pos"]) - np.array(info["sim_lead_pos"]))
             avg_true_dist += sim_dist.item()
@@ -395,14 +425,32 @@ class Logger:
             if info["est_lead_pos"] and info["est_ego_pos"]:
                 est_dist = np.linalg.norm(np.array(info["est_ego_pos"]) - np.array(info["est_lead_pos"]))
                 dist_mse += (sim_dist - est_dist).item()**2
+                dist_meas_cnt += 1
 
-            if info["err_lead_vel"] and lead_vel_mse:
-                lead_vel_mse += np.linalg.norm(np.array(info["err_lead_vel"])).item()**2
-            else:
+            if self.filter_type == "None":
                 lead_vel_mse = None
-        print(f"dist_mse: {dist_mse/n}")
-        print(f"lead_vel_mse: {lead_vel_mse/n if lead_vel_mse else None}")
+            elif info["err_lead_vel"] and lead_vel_mse is not None:
+                lead_vel_mse += np.linalg.norm(np.array(info["err_lead_vel"])).item()**2
+                lead_vel_meas_cnt += 1
+
+        print(f"dist_mse: {dist_mse/dist_meas_cnt}")
+        print(f"lead_vel_mse: {lead_vel_mse/lead_vel_meas_cnt if lead_vel_mse else None}")
         print(f"avg_true_dist: {avg_true_dist/n}")
+
+    def exit(self, status: Status_t):
+        # Write the mp4 file
+        print("\nWriting the video...")
+        self.save_frames(finalize=True)
+        self.write_video()
+
+        # Write a setup.txt file containing all the important configuration options used for
+        # this run
+        print("\nWriting the setup file and dumping the logs...")
+        self.write_setup(status)
+        self.dump_logs()
+
+        print("\nStatistics...")
+        self.print_statistics()
 
 
 class GraphLogs:
@@ -447,7 +495,7 @@ class GraphLogs:
               sim_color: str,
               est_color: str
     ) -> None:
-        def index_info(info, key):
+        def index_info(info, key, axis):
             reg = info[key]
             if reg is None:
                 return np.nan
@@ -455,21 +503,24 @@ class GraphLogs:
                 return info[key][self._map_axis_to_idx(axis)]
             return reg
         
-        def extract_values(info, sim_key, est_key, sim_key2, est_key2):
-            simi = np.array(index_info(info, sim_key))
-            esti = np.array(index_info(info, est_key))
+        def extract_values(info, sim_key, est_key, sim_key2, est_key2, axis):
+            simi = np.array(index_info(info, sim_key, axis))
+            esti = np.array(index_info(info, est_key, axis))
             if sim_key2 is None or est_key2 is None:
-                return np.linalg.norm(simi), np.linalg.norm(esti)
+                if axis == "all":
+                    return np.linalg.norm(simi), np.linalg.norm(esti)
+                else:
+                    return simi, esti
             
-            simi2 = np.array(index_info(info, sim_key2))
-            esti2 = np.array(index_info(info, est_key2))
+            simi2 = np.array(index_info(info, sim_key2, axis))
+            esti2 = np.array(index_info(info, est_key2, axis))
             return np.linalg.norm(simi - simi2), np.linalg.norm(esti - esti2)
 
         sim_key, est_key, sim_key2, est_key2 = self._map_gtype_vname_to_keys(graph_type, vehicle_name)
         sim_info = []
         est_info = []
         for info in self.frame_info:
-            simi, esti = extract_values(info, sim_key, est_key, sim_key2, est_key2)
+            simi, esti = extract_values(info, sim_key, est_key, sim_key2, est_key2, axis)
             sim_info.append(simi)
             est_info.append(esti)
         
@@ -491,6 +542,46 @@ class GraphLogs:
         fig, ax = plt.subplots()
         self._graph(ax, fps, graph_type, axis, vehicle_name, sim_color, est_color)
         fig.savefig(filename)
+        plt.close(fig)
+
+    def plot_movement_3d(self, filename: str, path: Optional[List[airsim.Vector3r]] = None):
+        """
+        Plots the positions of the EgoUAV and the LeadingUAV on a 3D plot.
+        If the path argument is provided, it also plots the expected path the
+        LeadingUAV moves on.
+
+        Args:
+        path: The List of points in 3D space the LeadingUAV will be provided with
+        in order to visit. If None this line will not be plotted.
+        """
+        # Extract the positions at which the EgoUAV registers
+        lead_pos = np.array([[], [], []])
+        ego_pos = np.array([[], [], []])
+        for info in self.frame_info:
+            lead_pos = np.hstack([lead_pos, np.array(info["sim_lead_pos"]).reshape([3,1])])
+            ego_pos = np.hstack([ego_pos, np.array(info["sim_ego_pos"]).reshape([3,1])])
+        
+        # Convert the path to the correct format
+        path_array = None
+        if path:
+            path_array = np.array([[], [], []])
+            for point in path:
+                path_array = np.hstack([path_array, point.to_numpy_array().reshape([3, 1])])
+
+        # Create the 3D plot using matplotlib
+        fig = plt.figure()
+        ax: plt.Axes = fig.add_subplot(projection='3d')
+        ax.plot(xs=lead_pos[0, :], ys=lead_pos[1, :], zs=lead_pos[2, :], label="LeadingUAV position")
+        ax.plot(xs=ego_pos[0, :], ys=ego_pos[1, :], zs=ego_pos[2, :], label="EgoUAV position")
+        if path_array is not None:
+            ax.plot(xs=path_array[0, :], ys=path_array[1, :], zs=path_array[2, :], label="Path")
+        ax.legend()
+        ax.view_init(elev=20., azim=-135, roll=0) # type: ignore
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z') # type: ignore
+        fig.savefig(filename)
+        plt.close(fig)
 
 
 class TerminalProgress():

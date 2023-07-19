@@ -2,23 +2,66 @@ import time
 
 import numpy as np
 import airsim
+from tqdm import tqdm
 
 from models.UAV import UAV
 from models.EgoUAV import EgoUAV
 from models.LeadingUAV import LeadingUAV
 from nets.DetectionNetBench import DetectionNetBench
 from gendata import create_sample
+from GlobalConfig import GlobalConfig as config
 
 def construct_measurement_vector(kinematics: airsim.KinematicsState) -> np.ndarray:
     pos = np.expand_dims(kinematics.position.to_numpy_array(), axis=1)
     vel = np.expand_dims(kinematics.linear_velocity.to_numpy_array(), axis=1)
     return np.vstack([pos, vel])
 
-def estimate_process_noise(num_samples: int = 100) -> np.ndarray:
-    # Initialize the UAV to measure
-    uav = UAV("EgoUAV")
+def complex_process_noise_estim(num_samples: int = 100) -> np.ndarray:
+    uav = LeadingUAV(config.leadingUAV_name)
     uav.lastAction.join()
-    # uav.client.simSetWind(airsim.Vector3r(1, -1, 0.2))
+
+    # Allocate space for the 2D matrix that will have the
+    # random variables as lines and each column will be an
+    # observation
+    observ_matrix = np.zeros([6, num_samples])
+
+    prev_kin = uav.simGetGroundTruthKinematics()
+    prev_meas_vec = construct_measurement_vector(prev_kin).squeeze()
+    for obs_idx in tqdm(range(num_samples)):
+        uav.random_move(config.leadingUAV_update_vel_interval_s)
+        time.sleep(1/config.infer_freq_Hz)
+
+        cur_kin = uav.simGetGroundTruthKinematics()
+        cur_meas_vec = construct_measurement_vector(cur_kin).squeeze()
+        
+        observ_matrix[:, obs_idx] = cur_meas_vec - prev_meas_vec
+
+        # Update
+        prev_kin = cur_kin
+        prev_meas_vec = cur_meas_vec
+
+
+    # Use numpy to calculate the covariance matrix for all
+    # random variables
+    process_noise = np.cov(observ_matrix, bias=True)
+
+    # Restore the initial simulation state
+    uav.disable()
+    uav.client.reset()
+    return process_noise
+
+
+def estimate_process_noise(num_samples: int = 100, set_wind: bool = False) -> np.ndarray:
+    """
+    Estimates the process covariance matrix, by setting the UAV to
+    hover and measuring (ground truth, since we are in a simulation)
+    it's position and velocity.
+    """
+    # Initialize the UAV to measure
+    uav = UAV(config.leadingUAV_name)
+    uav.lastAction.join()
+    if set_wind:
+        uav.client.simSetWind(airsim.Vector3r(1, -1, 0.2))
 
     # Allocate space for the 2D matrix that will have the
     # random variables as lines and each column will be an
@@ -26,11 +69,11 @@ def estimate_process_noise(num_samples: int = 100) -> np.ndarray:
     observ_matrix = np.zeros([6, num_samples])
 
     # Use ground truth measurements, provided by the simulation
-    # to create observation vectors
-    for obs_idx in range(num_samples):
+    # to create observation vectors.
+    for obs_idx in tqdm(range(num_samples)):
         kinematics = uav.simGetGroundTruthKinematics()
         observ_matrix[:, obs_idx] = construct_measurement_vector(kinematics).squeeze()
-        time.sleep(0.5)
+        time.sleep(1/config.infer_freq_Hz)
 
     # Use numpy to calculate the covariance matrix for all
     # random variables
@@ -52,7 +95,7 @@ def estimate_measurement_noise(network: DetectionNetBench, num_samples: int = 10
     3. Utilizes the provided network in order to estimate the offset of the LeadingUAV
     from EgoUAV's camera and offsets this estimation (on each axis) in order to match
     EgoUAV's center.
-    4. Uses the API to get the estimated position of the EgoUAV.
+    4. Uses the API to get the ground truth position of the EgoUAV.
     5. Sums the results of 3 and 4. The result is an estimation for LeadingUAV's position.
     It is important to note that this estimation will be in EgoUAV's coordinate frame.
     6. Using the ground truth information provided by the simulation, we may have the exact
@@ -73,8 +116,9 @@ def estimate_measurement_noise(network: DetectionNetBench, num_samples: int = 10
     observ_matrix = np.zeros([3, num_samples])
 
     # Create instances for the two UAVs
-    egoUAV = EgoUAV("EgoUAV", genmode=True)
-    leadingUAV = LeadingUAV("LeadingUAV", genmode=True)
+    egoUAV = EgoUAV(config.egoUAV_name, genmode=True)
+    leadingUAV = LeadingUAV(config.leadingUAV_name, genmode=True)
+
     # Get the distance between the origins of the two coordinate frames defined
     # for each of the UAVs. (Reminder: This origin point is defined by where the
     # UAV spawns at)
@@ -84,18 +128,23 @@ def estimate_measurement_noise(network: DetectionNetBench, num_samples: int = 10
         ).to_numpy_array(), axis=1)
 
     sample_idx = 0
+    pbar = tqdm(total=num_samples)
     while sample_idx < num_samples:
         # Utilize create_sample from gendata.py to execute steps 1 and 2.
-        img, _ = create_sample(egoUAV, leadingUAV)
+        # Have the EgoUAV at a height, so no shadows can be detected.
+        img, _ = create_sample(egoUAV, leadingUAV, ego_box_lims_x=(-50, -60))
         # Evaluate the image returned
         bbox, _ = network.eval(img)
         if not bbox:
+            # The image did not contain the LeadingUAV, restart the process.
             continue
 
-        # Use the API to get the estimated position of the EgoUAV.
-        # TODO: Maybe handle the fact that the EgoUAV also adds measurement
-        # errors, when estimating it's own position.
-        # Maybe change simGetGroundTruthKinematics() to getMultirotorState().kinematics_estimated
+        # Use the API to get the ground truth position of the EgoUAV.
+        # Note: The kalman filter we will be utilizing only cares about the measurement
+        # noise due to the error of the bbox and it's conversion to a distance on each axis.
+        # The AirSim API notes: https://microsoft.github.io/AirSim/simple_flight/#state-estimation
+        # that the position returned by the estimation function is in reality the ground truth position.
+        # If we where to actually estimate the position of the EgoUAV a separate KF would be required.
         ego_pos_estim = np.expand_dims(
             egoUAV.simGetGroundTruthKinematics().position.to_numpy_array(),
             axis=1
@@ -113,6 +162,8 @@ def estimate_measurement_noise(network: DetectionNetBench, num_samples: int = 10
 
         # Update control variable
         sample_idx += 1
+        pbar.update(n=1)
 
+    pbar.close()
     # Calculate the covariance
     return np.cov(observ_matrix)

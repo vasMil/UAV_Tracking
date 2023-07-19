@@ -1,9 +1,10 @@
-from typing import List
+from typing import List, Literal
 import math
 
 import numpy as np
 import airsim
 
+from GlobalConfig import GlobalConfig as config
 from models.UAV import UAV
 
 def sim_calculate_angle(uav_source: UAV, uav_target: UAV) -> float:
@@ -50,13 +51,30 @@ def getSquarePathAroundPoint(pointx: float,
     return ret_l
 
 
-def getTestPath(start_pos: airsim.Vector3r) -> List[airsim.Vector3r]:
-    # Define list of points.
-    # Each point is defined around (0, 0, 0).
-    # This allows us to easily think about the angles at which the vehicle
-    # will move along, if it was at point (0, 0, 0) and thus we can design
-    # with ease difficult paths.
-    path = [
+def createPathFromPoints(path: List[airsim.Vector3r]) -> List[airsim.Vector3r]:
+    """
+    Given a list of points. Sum each point with the previous, in order to get
+    the actual points on the coordinate system and allow for a smooth movement
+    on the resulted path.
+
+    Each point is defined around (0, 0, 0).
+    This allows us to easily think about the angles at which the vehicle
+    will move along, if it was at point (0, 0, 0) and thus we can design
+    with ease difficult paths.
+    """
+    for i, _ in enumerate(path):
+        if i == 0: continue
+        path[i] /= np.linalg.norm(path[i].to_numpy_array())
+        path[i] *= config.uav_velocity * config.leadingUAV_update_vel_interval_s
+        path[i] += path[i-1]
+
+    return path
+
+def getTestPath(start_pos: airsim.Vector3r, version: Literal["v0", "v1", "v2"] = "v2") -> List[airsim.Vector3r]:
+    """
+    Get a predefined path, giving the starting position of the vehicle.
+    """
+    path_v0 = [
         start_pos,
         airsim.Vector3r(10, 0, 0),    # Test x axis - moving forward
         # airsim.Vector3r(-10, 3, 0), # Test x axis - moving backwards, this is not allowed and thus will be skipped
@@ -82,11 +100,54 @@ def getTestPath(start_pos: airsim.Vector3r) -> List[airsim.Vector3r]:
         airsim.Vector3r(5, -10, -15),
     ]
 
-    # Sum each point with the previous, in order to get
-    # the actual points on the coordinate system and allow
-    # for a smooth movement on the resulted path.
-    for i, _ in enumerate(path):
-        if i == 0: continue
-        path[i] += path[i-1]
+    path_v1 = [
+        start_pos,
+        airsim.Vector3r(10, 0, 0),
+        
+        airsim.Vector3r(0, 10, 0),
+        airsim.Vector3r(10, 0, 0),
+        airsim.Vector3r(0, -10, 0),
+        airsim.Vector3r(10, 0, 0),
+        airsim.Vector3r(0, -10, 0),
+        airsim.Vector3r(10, 0, 0),
+        airsim.Vector3r(0, 10, 0),
+        airsim.Vector3r(10, 0, 0),
 
-    return path
+        airsim.Vector3r(0, 10, 0),
+        airsim.Vector3r(10, 0, 0),
+        airsim.Vector3r(0, -10, 0),
+        airsim.Vector3r(10, 0, 0),
+        airsim.Vector3r(0, -10, 0),
+        airsim.Vector3r(10, 0, 0),
+        airsim.Vector3r(0, 10, 0),
+        airsim.Vector3r(10, 0, 0),
+
+        airsim.Vector3r(2, 7, -7),
+        airsim.Vector3r(2, 5, -9),
+        airsim.Vector3r(2, -5, -9),
+        # airsim.Vector3r(2, -7, 25)
+    ]
+
+    path_v2 = [
+        start_pos,
+        airsim.Vector3r(1, 0, 0),
+        airsim.Vector3r(0, 1, 0),
+        airsim.Vector3r(0, 1, 0),
+        airsim.Vector3r(0, 1, 0),
+        airsim.Vector3r(0, 1, 0),
+
+        airsim.Vector3r(1, 1, 0),
+        airsim.Vector3r(1, 1, 0),
+
+        airsim.Vector3r(0, -1, 0),
+        airsim.Vector3r(0, -1, 0),
+        airsim.Vector3r(0, -1, 0),
+        airsim.Vector3r(0, -1, 0),
+
+        airsim.Vector3r(-1, -1, 10),
+        airsim.Vector3r(-1, -1, 10),
+    ]
+    return createPathFromPoints(path_v0 if version == "v0" else \
+                                path_v1 if version == "v1" else \
+                                path_v2
+            )

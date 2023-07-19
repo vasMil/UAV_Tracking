@@ -83,7 +83,8 @@ class KalmanFilter():
 
         # State process covariance matrix
         if self.Q is None:
-            # 
+            # Noise introduced since we model the acceleration of the LeadingUAV
+            # as a Discrete White Noise.
             up_q = np.diag([(dt**3)/2, (dt**3)/2, (dt**3)/2], k=3)
             Q = np.diag([(dt**4)/4, (dt**4)/4, (dt**4)/4, dt**2, dt**2, dt**2]) + up_q + up_q.T
             # fictitious process noise

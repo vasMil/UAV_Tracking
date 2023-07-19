@@ -98,20 +98,12 @@ def estimate_measurement_noise(network: DetectionNetBench, num_samples: int = 10
     4. Uses the API to get the ground truth position of the EgoUAV.
     5. Sums the results of 3 and 4. The result is an estimation for LeadingUAV's position.
     It is important to note that this estimation will be in EgoUAV's coordinate frame.
-    6. Using the ground truth information provided by the simulation, we may have the exact
-    position of the LeadingUAV and thus the true error of the estimation. Note that the ground
-    truth is in the (global) world coordinate frame and thus in order to calculate the error we
-    need to map 5 and 6 to the same coordinate frame.
-
-    Using the above steps we may create a 2D matrix that will contain the errors of each observation
-    for each one of the 3 axis (x, y, z). Then utilizing numpy's numpy.cov function, we may extract
-    the covariance matrix for the measurement noise.
 
     In order for step 1 to work you have to set
     `"PhysicsEngineName":"ExternalPhysicsEngine"`
     in the settings file.
     """
-    # Allocate a 2D matrix in order to store the errors (observations).
+    # Allocate a 2D matrix in order to store the observations.
     # One row per random variable and a column per observation.
     observ_matrix = np.zeros([3, num_samples])
 
@@ -153,12 +145,7 @@ def estimate_measurement_noise(network: DetectionNetBench, num_samples: int = 10
         # Since there is a bbox there get_distance_from_bbox will return an offset
         lead_pos_estim = ego_pos_estim + egoUAV.get_distance_from_bbox(bbox) # type: ignore
         
-        # Calculate the error for each axis
-        lead_pos_gt = np.expand_dims(leadingUAV.simGetObjectPose().position.to_numpy_array(), axis=1)
-        lead_pos_gt += lead_ego_origin_dist
-
-        # Store the error into the matrix
-        observ_matrix[:, sample_idx] = abs(lead_pos_gt - lead_pos_estim).squeeze()
+        observ_matrix[:, sample_idx] = lead_pos_estim.squeeze()
 
         # Update control variable
         sample_idx += 1

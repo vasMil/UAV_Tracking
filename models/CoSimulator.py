@@ -87,8 +87,8 @@ class CoSimulator():
         self.camera_frame_idx, self.prev_camera_frame_idx = -1, -1
 
         # Move up so you minimize shadows
-        self.leadingUAV.moveByVelocityAsync(0, 0, -5, 20)
-        self.egoUAV.moveByVelocityAsync(0, 0, -5, 20)
+        self.leadingUAV.moveByVelocityAsync(0, 0, -5, 10)
+        self.egoUAV.moveByVelocityAsync(0, 0, -5, 10)
         self.egoUAV.lastAction.join()
         self.leadingUAV.lastAction.join()
         # Wait for the vehicles to stabilize
@@ -157,10 +157,10 @@ class CoSimulator():
         self.camera_frame_idx += 1
 
     def hook_leadingUAV_move(self):
-        # self.leadingUAV.random_move(self.leadingUAV_update_vel_interval_s)
-        if self.frame_idx == 0:
-            self.leading_path = getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position)
-            self.leadingUAV.moveOnPathAsync(self.leading_path)
+        self.leadingUAV.random_move(self.leadingUAV_update_vel_interval_s)
+        # if self.frame_idx == 0:
+            # self.leading_path = getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position)
+            # self.leadingUAV.moveOnPathAsync(self.leading_path)
 
     def hook_net_inference(self) -> bool:
         """

@@ -39,15 +39,17 @@ class Controller():
             ) -> None:
         self.filter = None
         if filter_type == "KF":
-            X_init = np.zeros([6, 1]); X_init[0, 0] = 3.5; X_init[1, 0] = 0; X_init[2, 0] = -100
+            X_init = np.zeros([6, 1]); X_init[0, 0] = 3.5; X_init[1, 0] = 0; X_init[2, 0] = -50
             P_init = np.diag([0.01, 0.01, 0.01, 1, 1, 1])
             # Measurement noise Covariance Matrix
-            R = np.diag([30.45326648, 33.64031622, 13.53362295])
+            R = np.array([[21.934, 2.743,  1.497],
+                          [2.743,  58.147, 0.407],
+                          [1.497,  0.407,  9.53 ]])
             self.filter = KalmanFilter(X_init=X_init,
                                        P_init=P_init,
                                        R=R,
                                        Q=None,
-                                       forget_factor_a=1.01)
+                                       forget_factor_a=1.05)
         self.prev_vel = np.zeros([3, 1])
         self.prev_yaw = 0
 

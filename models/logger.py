@@ -576,10 +576,11 @@ class GraphLogs:
         if path_array is not None:
             ax.plot(xs=path_array[0, :], ys=path_array[1, :], zs=path_array[2, :], label="Path")
         ax.legend()
-        ax.view_init(elev=20., azim=-135, roll=0) # type: ignore
+        ax.view_init(elev=20., azim=-120, roll=0) # type: ignore
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z') # type: ignore
+        ax.invert_zaxis() # type: ignore
         fig.savefig(filename)
         plt.close(fig)
 

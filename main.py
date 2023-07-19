@@ -57,3 +57,8 @@ if __name__ == '__main__':
     # print("\n")
     # print("HOVER ESTIMATION:")
     # print(estimate_process_noise(num_samples=10000))
+
+    # from utils.kalman_filter import estimate_measurement_noise
+    # from nets.DetectionNets import Detection_SSD
+    # ssd = Detection_SSD()
+    # print(estimate_measurement_noise(network=ssd, num_samples=10000))

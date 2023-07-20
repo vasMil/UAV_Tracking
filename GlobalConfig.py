@@ -20,15 +20,8 @@ class GlobalConfig:
     score_threshold: float = 0.1
 
     # The upper an lower limit for the velocity on each axis of both UAVs
-    max_vx, max_vy, max_vz = 5.,  5,  2.5
-    min_vx, min_vy, min_vz = 1., -5, -2.5
-
-    # How much time should each move airsim api call last for
-    # (ex. moveByVelocityAsync, duration argument)
-    move_duration: float = 4
-
-    # Number of steps the game loop should take
-    game_loop_steps: int = 10
+    max_vx, max_vy, max_vz = 5.,  5,  5
+    min_vx, min_vy, min_vz = 1., -5, -5
 
     # Minimum acceptable error
     eps = 1e-5
@@ -118,5 +111,7 @@ class GlobalConfig:
     infer_freq_Hz = 30
     filter_freq_Hz = 30
     filter_type: Literal["None", "KF"] = "KF"
+    motion_model: Literal["CA", "CV"] = "CA"
+    use_pepper_filter: bool = True
     leadingUAV_update_vel_interval_s = 2
     max_time_lead_is_lost_s = 2

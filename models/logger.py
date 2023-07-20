@@ -272,6 +272,8 @@ class Logger:
                     f"status = {status}\n"
                     f"\n"
                     f"# Type of filter used by the controller to filter the offset measurements\n"
+                    f"use__pepper_filter = {config.use_pepper_filter}\n"
+                    f"motion_model = {config.motion_model}\n"
                     f"filter_type = {self.filter_type}\n"
                     f"filter_freq_Hz = {self.filter_freq_Hz}\n"
                     f"\n"

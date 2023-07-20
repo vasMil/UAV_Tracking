@@ -157,10 +157,10 @@ class CoSimulator():
         self.camera_frame_idx += 1
 
     def hook_leadingUAV_move(self):
-        self.leadingUAV.random_move(self.leadingUAV_update_vel_interval_s)
-        # if self.frame_idx == 0:
-            # self.leading_path = getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position)
-            # self.leadingUAV.moveOnPathAsync(self.leading_path)
+        # self.leadingUAV.random_move(self.leadingUAV_update_vel_interval_s)
+        if self.frame_idx == 0:
+            self.leading_path = getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position)
+            self.leadingUAV.moveOnPathAsync(self.leading_path)
 
     def hook_net_inference(self) -> bool:
         """

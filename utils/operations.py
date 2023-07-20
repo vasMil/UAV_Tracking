@@ -77,31 +77,6 @@ def rotate3d(pitch_deg: float, roll_deg: float, yaw_deg: float, point: np.ndarra
     rot_mat = rot_mat_yaw @ rot_mat_pitch @ rot_mat_roll
     return rot_mat @ point
 
-def offset_to_yaw_angle(offset: np.ndarray) -> float:
-    """
-    Using the offset that is recorded on any translation of the global coordinate
-    system to calculate the yaw angle at which the EgoUAV should be rotated at, in
-    order to preserve (on the y axis) the target in it's FOV.
-    
-    Definition of: "any offset of the global coordinate system"
-        No rotation of any of the global coordinate axis is allowed, 
-        but all possible translations are
-    
-    Args:
-    - offset: The offset between the EgoUAV and the target, IN GLOBAL COORDINATE SYSTEM.
-
-    Returns:
-    The yaw angle at which the target will be found (in degrees).
-    """
-    if offset[0] == 0:
-        return 0
-    angle_deg = math.degrees(math.atan(offset[1] / offset[0]))
-    if angle_deg > 0 and offset[1] < 0:
-        angle_deg -= 180
-    elif angle_deg < 0 and offset[1] > 0:
-        angle_deg += 180
-    return angle_deg
-
 def vector_transformation(pitch_deg: float,
                           roll_deg: float,
                           yaw_deg: float,

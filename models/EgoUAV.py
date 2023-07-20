@@ -305,7 +305,11 @@ class EgoUAV(UAV):
                                      axis=1
         )
 
-        velocity, yaw_deg, est_frame_info = self.controller.step(None, None, dt, current_pos)
+        velocity, yaw_deg, est_frame_info = self.controller.step(offset=None,
+                                                                 pitch_roll_yaw_deg=np.array([0, 0, 0]),
+                                                                 dt=dt,
+                                                                 ego_pos=current_pos
+                                                            )
 
         self.lastAction = self.moveByVelocityAsync(*(velocity.squeeze()),
                                                    duration=dt,

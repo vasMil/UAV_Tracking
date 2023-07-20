@@ -1,63 +1,124 @@
 from typing import Literal, Optional, Tuple
+import math
 
 import numpy as np
 
 from GlobalConfig import GlobalConfig as config
 from controller.KalmanFilter import KalmanFilter
-from utils.operations import vector_transformation, offset_to_yaw_angle
+from controller.PepperFilter import PepperFilter
+from utils.operations import vector_transformation
 from models.FrameInfo import EstimatedFrameInfo
 
 class Controller():
     """
-    Converts measurements to EgoUAV target velocity. If no measurement is
-    available it predicts the position of the target.
+    Converts measurements to EgoUAV target velocity. If no measurement is\
+    available it predicts the position of the target.\
 
     The steps followed by the controller:
-    1. Transform the offset vector from the camera's axis to the EgoUAV's axis,
+    1. Transform the offset vector from the camera's axis to the EgoUAV's axis,\
     using the orientation of the EgoUAV when the frame was captured.
     2. If a Kalman Filter is to be used:
-        - Convert the transformed vector to a target position in 3D space, using
-        the EgoUAV's position. 
-        From EgoUAV's position we subtract (prev Ego veloc)*dt
-        in order to estimate EgoUAV's position at the time the frame was captured.
-        Then we may add the transformed offset to this position estimate and get
+        - Convert the transformed vector to a target position in 3D space, using\
+        the EgoUAV's position.
+        - From EgoUAV's position we subtract (prev Ego veloc)*dt to retrieve\
+        EgoUAV's position at the time the frame was captured.
+        - We add the transformed offset to this EgoUAV's position estimate in order to\
         the estimate of the LeadingUAV's position.
-        - We use this "measurement" (of the LeadingUAV's position) as input for the KF.
+        - We use this "measurement" (of the LeadingUAV's position) as input for the KF.\
         and it return's a better estimate of the LeadingUAV's position.
-        - We subtract the EgoUAV's estimated position we added at the first bullet point.
+        - We subtract the EgoUAV's estimated position we added at the first bullet point.\
         and get a better estimate of the offset between the EgoUAV and the target.
-    3. Multiply the offset on each axis with a weight. This way we may prioritize movement
-       on the z axis, since we have a really limited vertical FOV and we do not want to lose
+    3. Multiply the offset on each axis with a weight. This way we may prioritize movement\
+       on the z axis, since we have a really limited vertical FOV and we do not want to lose\
        the target, since otherwise we would not be able to get any measurements.
-    4. Convert the weighted offset to a velocity:
+    4. Convert the weighted offset to a velocity:\
        If the magnitude of the offset vector is not 0, we normalize it
-       (thus preserving it's direction) and we then multiply it by the
+       (thus preserving it's direction) and we then multiply it by the\
        desired velocity (i.e. config.uav_velocity).
     """
     def __init__(self,
                  filter_type: Literal["None", "KF"] = "None"
             ) -> None:
-        self.filter = None
-        if filter_type == "KF":
-            X_init = np.zeros([6, 1]); X_init[0, 0] = 3.5; X_init[1, 0] = 0; X_init[2, 0] = -50
-            P_init = np.diag([0.01, 0.01, 0.01, 1, 1, 1])
-            # Measurement noise Covariance Matrix
-            R = np.array([[21.934, 2.743,  1.497],
-                          [2.743,  58.147, 0.407],
-                          [1.497,  0.407,  9.53 ]])
-            self.filter = KalmanFilter(X_init=X_init,
-                                       P_init=P_init,
-                                       R=R,
-                                       Q=None,
-                                       forget_factor_a=1.05)
+        # Helper variables that preserve the previous instruction
+        # of the controller
         self.prev_vel = np.zeros([3, 1])
         self.prev_yaw = 0
 
+        # A filter that will remove impossible measurements
+        self.pepper_filter = PepperFilter(2)
+        self.filter = None
+        # Configure the KF
+        if filter_type == "KF":
+            X_init = np.zeros([9, 1]); X_init[0, 0] = 3.5; X_init[1, 0] = 0; X_init[2, 0] = -50
+            P_init = np.diag([0.01, 0.01, 0.01, 1, 1, 1, 1, 1, 1])
+            self.filter = KalmanFilter(X_init=X_init,
+                                       P_init=P_init,
+                                       dt=(1/config.infer_freq_Hz),
+                                       motion_model=config.motion_model,
+                                       forget_factor_a=1.01)
+
+    def offset_to_velocity(self, offset: np.ndarray) -> np.ndarray:
+        # Multiply with the weights
+        offset = np.multiply(offset, np.array(
+            [[config.weight_vel_x], [config.weight_vel_y], [config.weight_vel_z]]
+        ))
+
+        # Preserve the direction of the offset, normalize the vector
+        # and multiply with the desired velocity magnitude.
+        offset_magn = np.linalg.norm(offset) # ignore: type
+        if offset_magn != 0:
+            offset /= offset_magn
+            velocity = np.multiply(offset, config.uav_velocity)
+            assert(config.uav_velocity - np.linalg.norm(velocity) < config.eps)
+        else:
+            velocity = np.zeros([3,1])
+        return velocity
+
+    def offset_to_yaw_angle(self,
+                            offset: np.ndarray,
+                            lead_velocity: Optional[np.ndarray] = None,
+                            ego_velocity: Optional[np.ndarray] = None
+        ) -> float:
+        """
+        Using the offset that is recorded on any translation of the global coordinate
+        system to calculate the yaw angle at which the EgoUAV should be rotated at, in
+        order to preserve (on the y axis) the target in it's FOV.
+        
+        Definition of: "any offset of the global coordinate system"
+            No rotation of any of the global coordinate axis is allowed, 
+            but all possible translations are
+        
+        The velocities of the LeadingUAV and the EgoUAV, if provided they will predict
+        the offset of the two vehicles (1/inference_frequenct) seconds ahead and use this
+        to calculate the yaw angle.
+
+        Args:
+        - offset: The offset between the EgoUAV and the target, IN GLOBAL COORDINATE SYSTEM.
+        - lead_velocity: The predicted velocity of the LeadingUAV.
+        - ego_velocity: The target velocity of the EgoUAV.
+    
+        Returns:
+        The yaw angle at which the target will be found (in degrees).
+        """
+        dt = (1/config.infer_freq_Hz)
+        if lead_velocity is not None:
+            offset += lead_velocity*dt
+        if ego_velocity is not None:
+            offset -= ego_velocity*dt
+        if offset[0] == 0:
+            return 0
+        angle_deg = math.degrees(math.atan(offset[1] / offset[0]))
+        if angle_deg > 0 and offset[1] < 0:
+            angle_deg -= 180
+        elif angle_deg < 0 and offset[1] > 0:
+            angle_deg += 180
+        return angle_deg
+
     def step(self,
              offset: Optional[np.ndarray],
-             pitch_roll_yaw_deg: Optional[np.ndarray],
+             pitch_roll_yaw_deg: np.ndarray,
              dt: float,
-             ego_pos: Optional[np.ndarray] = None
+             ego_pos: np.ndarray
         ) -> Tuple[np.ndarray, float, EstimatedFrameInfo]:
         """
         Calculates a velocity, using the target velocity found in config and
@@ -73,9 +134,7 @@ class Controller():
         - dt: The time interval between two consecutive calls.
         - ego_pos: Important for when using the KF, in order to have the offset \
         added to it and be able to estimate the position of the LeadingUAV. In \
-        all other cases it may be ommitted. If you want to log the estimated \
-        LeadingUAV position and the estimated EgoUAV position on each frame, \
-        you need to include it in all cases.
+        all other cases it is used just for logging purposes.
 
         Returns:
         A Tuple containing:
@@ -85,6 +144,8 @@ class Controller():
         - A TypedDict (EstimatedFrameInfo) containing all the estimated values \
         that we want to log.
         """
+        # Define an empty EstimatedFrameInfo to populate
+        # along the way
         est_frame_info: EstimatedFrameInfo = {
             "egoUAV_target_velocity": None,
             "angle_deg": None,
@@ -94,73 +155,51 @@ class Controller():
             "still_tracking": None
         }
 
-        yaw_deg = None
+        # Subtract the distance covered by the EgoUAV, while waiting
+        # for the inference to finish and/or the controller to advance
+        ego_pos -= self.prev_vel*dt
+        
+        # Cleanup any pepper noise in the measurements
+        # (i.e. discard measurements that are impossible, since there is an upper limit to the velocity of a UAV)
+        if config.use_pepper_filter:
+            offset = self.pepper_filter.step(meas=offset, max_rel_vel=config.uav_velocity, time_interval=dt)
 
-        if ego_pos is not None:
-            # Subtract the distance covered by the EgoUAV, while waiting
-            # for the inference to finish and/or the controller to advance
-            ego_pos -= self.prev_vel*dt
+        # If the measurement is None and we have no filter to make up for it
+        # continue your movement.
+        if offset is None and self.filter is None:
             est_frame_info["egoUAV_position"] = tuple(ego_pos.squeeze())
-        
-        if (offset is not None and
-            pitch_roll_yaw_deg is not None
-        ):
-            # Transform the vector from the camera axis to those of the EgoUAV
-            # coordinate frame
-            offset = vector_transformation(*(pitch_roll_yaw_deg), vec=offset)
-            yaw_deg = offset_to_yaw_angle(offset)
-        elif offset is None and self.filter is None:
-            # In this case we do not have a measurement and we also have no filter
-            # that is able to predict the current location of the LeadingUAV.
-            # Thus we instruct the EgoUAV to continue on it's previous path.
-            # est_frame_info["egoUAV_target_velocity"] = tuple(self.prev_vel.squeeze())
-            # est_frame_info["angle_deg"] = self.prev_yaw
             return self.prev_vel, self.prev_yaw, est_frame_info
+
+        # Transform the vector from the camera axis to those of the EgoUAV
+        # coordinate frame.
+        if offset is not None:
+            offset = vector_transformation(*(pitch_roll_yaw_deg), vec=offset)
+            yaw_deg = self.offset_to_yaw_angle(offset)
         
-        if isinstance(self.filter, KalmanFilter) and ego_pos is not None:
-            if offset is None:
-                leading_state = self.filter.step(None, dt)
-            else:
+        # If we have a KF available use it here
+        leading_vel = None
+        if isinstance(self.filter, KalmanFilter):
+            if offset is None: # Predict
+                leading_state = self.filter.step(None)
+            else: # Filter
                 leading_pos = ego_pos + offset
-                leading_state = self.filter.step(np.pad(leading_pos, ((0,3),(0,0))), dt)
+                leading_state = self.filter.step(self.filter.pad_measurement(leading_pos))
 
-            leading_pos, leading_vel = np.vsplit(leading_state, 2)
+            # Recover the distance vector (offset) from the position vector retuned by the filter
+            leading_pos, leading_vel = leading_state[:3,:], leading_state[3:6,:]
             offset = leading_pos - ego_pos
-            yaw_deg = offset_to_yaw_angle(offset)
-            est_frame_info["leadingUAV_position"] = tuple(leading_pos.squeeze())
             est_frame_info["leadingUAV_velocity"] = tuple(leading_vel.squeeze())
-        elif isinstance(self.filter, KalmanFilter) and ego_pos is None:
-            raise AttributeError("Estimation of ego position is required when using a KF")
 
-        # At this point we know that we do not have a KF.
-        # As well as that if self.filter is None, then the offset cannot be None.
-        # We include the condition (about the offset) only for completeness.
-        elif self.filter is None and offset is not None and ego_pos is not None:
-            est_frame_info["leadingUAV_position"] = tuple((ego_pos + offset).squeeze())
+        # Convert the offset
+        velocity = self.offset_to_velocity(offset) # type: ignore
+        yaw_deg = self.offset_to_yaw_angle(offset, # type: ignore
+                                           lead_velocity=leading_vel,
+                                           ego_velocity=velocity)
 
-        if offset is None:
-            raise Exception("This is impossible at this point of code, but Pylance requires it!")
-
-        # Calculate the yaw angle at which the body should be rotated at.
-        if not yaw_deg:
-            yaw_deg = offset_to_yaw_angle(offset)
+        # Add info for the logger
+        est_frame_info["egoUAV_position"] = tuple(ego_pos.squeeze())
         est_frame_info["angle_deg"] = yaw_deg
-
-        # Multiply with the weights
-        offset = np.multiply(offset, np.array(
-            [[config.weight_vel_x], [config.weight_vel_y], [config.weight_vel_z]]
-        ))
-
-        # Preserve the direction of the offset, normalize the vector
-        # and multiply with the desired velocity magnitude.
-        offset_magn = np.linalg.norm(offset) # ignore: type
-        if offset_magn != 0:
-            offset /= offset_magn
-            velocity = np.multiply(offset, config.uav_velocity)
-            assert(config.uav_velocity - np.linalg.norm(velocity) < config.eps)
-        else:
-            velocity = np.zeros([3,1])
-
+        est_frame_info["leadingUAV_position"] = tuple((ego_pos + offset).squeeze()) # type: ignore
         est_frame_info["egoUAV_target_velocity"] = tuple(velocity.squeeze())
 
         # Update previous values

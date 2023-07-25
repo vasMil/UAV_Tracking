@@ -1,4 +1,4 @@
-from typing import List, Optional, Literal, Tuple, Callable
+from typing import List, Optional, Literal, Tuple, Callable, Dict
 from operator import itemgetter
 import datetime, time
 import os
@@ -262,17 +262,26 @@ class Logger:
         # Update the index of the next frame you want to save
         self.next_frame_idx_to_save += idx
 
-    def write_setup(self, status: Status_t):
+    def write_setup(self, status: Status_t, statistics: Dict[str, Optional[float]]):
         """
         Writes a txt file that contains useful information for the simulation run.
         It is mostly about GlobalConfig variables.
         """
+        # Convert the statistics dict values to strings
+        statstring = ""
+        for key in statistics:
+            statstring += f"{key}: {statistics[key]}\n"
+
+        # Write the file
         with open(self.setup_file, 'w') as f:
-            f.write(f"# The status of the run (why did the run terminate? | Normal = time finished)\n"
+            f.write(f"# The status of the run (why did the run terminate?)\n"
                     f"status = {status}\n"
                     f"\n"
+                    f"# Statistics:\n"
+                    f"{statstring}"
+                    f"\n"
                     f"# Type of filter used by the controller to filter the offset measurements\n"
-                    f"use__pepper_filter = {config.use_pepper_filter}\n"
+                    f"use_pepper_filter = {config.use_pepper_filter}\n"
                     f"motion_model = {config.motion_model}\n"
                     f"filter_type = {self.filter_type}\n"
                     f"filter_freq_Hz = {self.filter_freq_Hz}\n"
@@ -410,7 +419,7 @@ class Logger:
         }
         return frameInfo
 
-    def print_statistics(self):
+    def get_statistics(self) -> Dict[str, Optional[float]]:
         n = len(self.updated_info_per_frame)
         avg_true_dist: float = 0.
         # Some missing values may occure due to frames not
@@ -435,9 +444,10 @@ class Logger:
                 lead_vel_mse += np.linalg.norm(np.array(info["err_lead_vel"])).item()**2
                 lead_vel_meas_cnt += 1
 
-        print(f"dist_mse: {dist_mse/dist_meas_cnt}")
-        print(f"lead_vel_mse: {lead_vel_mse/lead_vel_meas_cnt if lead_vel_mse else None}")
-        print(f"avg_true_dist: {avg_true_dist/n}")
+        return {"dist_mse": dist_mse/dist_meas_cnt,
+                "lead_vel_mse": lead_vel_mse/lead_vel_meas_cnt if lead_vel_mse else None,
+                "avg_true_dist": avg_true_dist/n
+               }
 
     def exit(self, status: Status_t):
         # Write the mp4 file
@@ -448,11 +458,14 @@ class Logger:
         # Write a setup.txt file containing all the important configuration options used for
         # this run
         print("\nWriting the setup file and dumping the logs...")
-        self.write_setup(status)
+        stats = self.get_statistics()
+        self.write_setup(status=status,
+                         statistics=stats)
         self.dump_logs()
 
         print("\nStatistics...")
-        self.print_statistics()
+        for key in stats:
+            print(f"{key}: {stats[key]}")
 
 
 class GraphLogs:
@@ -577,6 +590,17 @@ class GraphLogs:
         ax.plot(xs=ego_pos[0, :], ys=ego_pos[1, :], zs=ego_pos[2, :], label="EgoUAV position")
         if path_array is not None:
             ax.plot(xs=path_array[0, :], ys=path_array[1, :], zs=path_array[2, :], label="Path")
+
+        # If the range of values in one direction is really small the graph can be misleading.
+        # So we fix that by setting the minimum range for the ticks to 5m
+        for i, ticks_func in enumerate(["set_xlim3d", "set_ylim3d", "set_zlim3d"]):
+            vals = np.hstack([ego_pos[i, :], lead_pos[i, :]])
+            max, min = vals.max(), vals.min()
+            if max - min < 5:
+                avg = (max + min)/2
+                half_range = config.movement_plot_min_range / 2
+                getattr(ax, ticks_func)(avg-half_range, avg+half_range)
+
         ax.legend()
         ax.view_init(elev=20., azim=-120, roll=0) # type: ignore
         ax.set_xlabel('X')

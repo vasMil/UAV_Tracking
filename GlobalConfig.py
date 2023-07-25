@@ -106,7 +106,7 @@ class GlobalConfig:
 
     # Logger settings
     sim_fps = 60
-    simulation_time_s = 60
+    simulation_time_s = 240
     camera_fps = 30
     infer_freq_Hz = 30
     filter_freq_Hz = 30
@@ -115,3 +115,4 @@ class GlobalConfig:
     use_pepper_filter: bool = True
     leadingUAV_update_vel_interval_s = 2
     max_time_lead_is_lost_s = 2
+    movement_plot_min_range = 10

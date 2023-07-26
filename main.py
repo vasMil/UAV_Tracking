@@ -1,64 +1,50 @@
 import traceback
+import shutil
 
+import numpy as np
+import matplotlib.pyplot as plt
+
+from config import DefaultCoSimulatorConfig
 from models.CoSimulator import CoSimulator
 
 if __name__ == '__main__':
-    # Generate data
-    # from gendata import generate_training_data
-    # generate_training_data(
-    #     csv_file="/home/airsim_user/UAV_Tracking/data/empty_map/shadows/empty_map_positions.csv",
-    #     root_dir="/home/airsim_user/UAV_Tracking/data/empty_map/shadows/",
-    #     num_samples=500
-    # )
-
-    # Train the NNs
-    # from nets.DetectionNets import Detection_SSD
-    # ssd = Detection_SSD(
-    #     root_train_dir="/home/airsim_user/UAV_Tracking/data/empty_map/train",
-    #     json_train_labels="/home/airsim_user/UAV_Tracking/data/empty_map/train/empty_map.json",
-    #     root_test_dir="/home/airsim_user/UAV_Tracking/data/empty_map/test",
-    #     json_test_labels="/home/airsim_user/UAV_Tracking/data/empty_map/test/empty_map.json"
-    # )
-    # torch.backends.cudnn.benchmark = True
-    # for i in range(0, 30)*10:
-    #     ssd.train(num_epochs=10)
-    #     ssd.save(f"nets/checkpoints/ssd{i+10-1}.checkpoint")
-
-    # Run inference frequency benchmark
-    # from nets.DetectionNets import Detection_SSD, Detection_FasterRCNN
-    # ssd = Detection_SSD(root_test_dir="/home/airsim_user/UAV_Tracking/data/empty_map/test",
-    # 		          json_test_labels="/home/airsim_user/UAV_Tracking/data/empty_map/test/empty_map.json")
-    # # ssd.get_inference_frequency(num_tests=10, warmup=2, cudnn_benchmark=True)
-    # ssd.load("nets/checkpoints/ssd300.checkpoint")
-    # ssd.plot_losses()
-    # rcnn = Detection_FasterRCNN(root_test_dir="/home/airsim_user/UAV_Tracking/data/empty_map/test",
-    #        	                 json_test_labels="/home/airsim_user/UAV_Tracking/data/empty_map/test/empty_map.json")
-    # rcnn.load("nets/checkpoints/rcnn120.checkpoint")
-    # rcnn.plot_losses()
-    # rcnn.get_inference_frequency(num_tests=10, warmup=2, cudnn_benchmark=True)
-
-    # Run the simulation
-    co_sim = CoSimulator()
-    try:
-        co_sim.start()
-        while not co_sim.done and co_sim.status == 0:
-            co_sim.advance()
-    except Exception:
-        co_sim.finalize("Error")
-        print("There was an error, writing setup file and releasing AirSim...")
-        print("\n" + "*"*10 + " THE ERROR MESSAGE " + "*"*10)
-        traceback.print_exc()
-    finally:
-        co_sim.finalize("Time's up")
-
-    # from utils.kalman_filter import complex_process_noise_estim, estimate_process_noise
-    # print("MOVEMENT ESTIMATION:")
-    # print(complex_process_noise_estim(num_samples=10000))
-    # print("\n")
-    # print("HOVER ESTIMATION:")
-    # print(estimate_process_noise(num_samples=10000))
-
-    # from utils.kalman_filter import estimate_measurement_noise
-    # from nets.DetectionNets import Detection_SSD
-    # ssd = Detection_SSD()
-    # print(estimate_measurement_noise(network=ssd, num_samples=10000))
+    num_tests = 3
+    x = np.arange(1,31)
+    y = np.zeros(x.shape)
+    t = np.zeros(x.shape)
+    for fi, f in enumerate(range(1,31)):
+        for i in range(num_tests):
+            config = DefaultCoSimulatorConfig(sim_fps=f,
+                                              camera_fps=f,
+                                              infer_freq_Hz=f,
+                                              filter_freq_Hz=f)
+            co_sim = CoSimulator(config=config)
+            try:
+                co_sim.start()
+                while not co_sim.done and co_sim.status == 0:
+                    co_sim.advance()
+            except Exception:
+                co_sim.finalize("Error")
+                print("There was an error, writing setup file and releasing AirSim...")
+                print("\n" + "*"*10 + " THE ERROR MESSAGE " + "*"*10)
+                traceback.print_exc()
+            finally:
+                co_sim.finalize("Time's up")
+            
+            y[fi] += co_sim.logger.get_statistics()["avg_true_dist"]
+            t[fi] += co_sim.logger.frame_cnt/co_sim.config.camera_fps
+            shutil.rmtree(co_sim.logger.images_path)
+        y[fi] /= num_tests
+        t[fi] /= num_tests
+    fig, ax = plt.subplots()
+    ax.plot(x, y)
+    ax.set_xlabel("SSD - Inference Frequency (Hz)")
+    ax.set_ylabel("Average True Distance (m)")
+    fig.savefig("recordings/path_v0/path_v0_dist_for_freq.png")
+    plt.close(fig)
+    fig, ax = plt.subplots()
+    ax.plot(x, t)
+    ax.set_xlabel("SSD - Inference Frequency (Hz)")
+    ax.set_ylabel("Simulation Time (s)")
+    fig.savefig("recordings/path_v0/path_v0_simtime_for_freq.png")
+    plt.close(fig)

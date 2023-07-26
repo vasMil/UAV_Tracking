@@ -4,61 +4,30 @@ import numpy as np
 import airsim
 from tqdm import tqdm
 
+from constants import LEADING_UAV_NAME
 from models.UAV import UAV
 from models.EgoUAV import EgoUAV
 from models.LeadingUAV import LeadingUAV
 from nets.DetectionNetBench import DetectionNetBench
 from gendata import create_sample
-from GlobalConfig import GlobalConfig as config
 
 def construct_measurement_vector(kinematics: airsim.KinematicsState) -> np.ndarray:
     pos = np.expand_dims(kinematics.position.to_numpy_array(), axis=1)
     vel = np.expand_dims(kinematics.linear_velocity.to_numpy_array(), axis=1)
     return np.vstack([pos, vel])
 
-def complex_process_noise_estim(num_samples: int = 100) -> np.ndarray:
-    uav = LeadingUAV(config.leadingUAV_name)
-    uav.lastAction.join()
 
-    # Allocate space for the 2D matrix that will have the
-    # random variables as lines and each column will be an
-    # observation
-    observ_matrix = np.zeros([6, num_samples])
-
-    prev_kin = uav.simGetGroundTruthKinematics()
-    prev_meas_vec = construct_measurement_vector(prev_kin).squeeze()
-    for obs_idx in tqdm(range(num_samples)):
-        uav.random_move(config.leadingUAV_update_vel_interval_s)
-        time.sleep(1/config.infer_freq_Hz)
-
-        cur_kin = uav.simGetGroundTruthKinematics()
-        cur_meas_vec = construct_measurement_vector(cur_kin).squeeze()
-        
-        observ_matrix[:, obs_idx] = cur_meas_vec - prev_meas_vec
-
-        # Update
-        prev_kin = cur_kin
-        prev_meas_vec = cur_meas_vec
-
-
-    # Use numpy to calculate the covariance matrix for all
-    # random variables
-    process_noise = np.cov(observ_matrix, bias=True)
-
-    # Restore the initial simulation state
-    uav.disable()
-    uav.client.reset()
-    return process_noise
-
-
-def estimate_process_noise(num_samples: int = 100, set_wind: bool = False) -> np.ndarray:
+def estimate_process_noise(num_samples: int = 100,
+                           set_wind: bool = False,
+                           sample_freq_Hz: int = 10
+    ) -> np.ndarray:
     """
     Estimates the process covariance matrix, by setting the UAV to
     hover and measuring (ground truth, since we are in a simulation)
     it's position and velocity.
     """
     # Initialize the UAV to measure
-    uav = UAV(config.leadingUAV_name)
+    uav = UAV(LEADING_UAV_NAME)
     uav.lastAction.join()
     if set_wind:
         uav.client.simSetWind(airsim.Vector3r(1, -1, 0.2))
@@ -73,7 +42,7 @@ def estimate_process_noise(num_samples: int = 100, set_wind: bool = False) -> np
     for obs_idx in tqdm(range(num_samples)):
         kinematics = uav.simGetGroundTruthKinematics()
         observ_matrix[:, obs_idx] = construct_measurement_vector(kinematics).squeeze()
-        time.sleep(1/config.infer_freq_Hz)
+        time.sleep(1/sample_freq_Hz)
 
     # Use numpy to calculate the covariance matrix for all
     # random variables
@@ -108,8 +77,8 @@ def estimate_measurement_noise(network: DetectionNetBench, num_samples: int = 10
     observ_matrix = np.zeros([3, num_samples])
 
     # Create instances for the two UAVs
-    egoUAV = EgoUAV(config.egoUAV_name, genmode=True)
-    leadingUAV = LeadingUAV(config.leadingUAV_name, genmode=True)
+    egoUAV = EgoUAV(genmode=True)
+    leadingUAV = LeadingUAV(genmode=True)
 
     # Get the distance between the origins of the two coordinate frames defined
     # for each of the UAVs. (Reminder: This origin point is defined by where the

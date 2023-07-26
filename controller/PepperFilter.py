@@ -2,8 +2,6 @@ from typing import List, TypeVar, Generic, Optional
 
 import numpy as np
 
-from GlobalConfig import GlobalConfig as config
-
 class PepperFilter():
     
     def __init__(self, n_samples: int = 2) -> None:
@@ -36,7 +34,7 @@ class PepperFilter():
 
     def step(self,
              meas: Optional[np.ndarray],
-             max_rel_vel: float,
+             max_magn_uav_vel: float,
              time_interval: float
         ) -> Optional[np.ndarray]:
         # Add the time_interval to the time that has passed
@@ -44,7 +42,7 @@ class PepperFilter():
         self.time_interval += time_interval
 
         # Determine the threashold
-        threashold = 2*max_rel_vel*self.time_interval
+        threashold = 2*max_magn_uav_vel*self.time_interval
         filt_meas = self._filter_measurement(meas, threashold=threashold)
 
         # If the returned value is not None then a new measurement

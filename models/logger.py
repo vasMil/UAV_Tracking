@@ -11,12 +11,16 @@ import cv2
 import numpy as np
 import plotext as tplt
 import airsim
+import json
 
 from project_types import Status_t
+from config import DefaultCoSimulatorConfig
+from constants import IMG_RESOLUTION_INCR_FACTOR,\
+    MOVEMENT_PLOT_MIN_RANGE,\
+    IMG_HEIGHT, IMG_WIDTH
 from models.EgoUAV import EgoUAV
 from models.LeadingUAV import LeadingUAV
 from models.BoundingBox import BoundingBox
-from GlobalConfig import GlobalConfig as config
 from utils.image import add_bbox_to_image, add_info_to_image, increase_resolution
 from utils.simulation import sim_calculate_angle
 from models.FrameInfo import FrameInfo, EstimatedFrameInfo, GroundTruthFrameInfo
@@ -43,34 +47,20 @@ class Logger:
     def __init__(self,
                  egoUAV: EgoUAV,
                  leadingUAV: LeadingUAV,
-                 sim_fps: int = config.sim_fps,
-                 simulation_time_s: int = config.simulation_time_s,
-                 camera_fps: int = config.camera_fps,
-                 infer_freq_Hz: int = config.infer_freq_Hz,
-                 leadingUAV_update_vel_interval_s: int = config.leadingUAV_update_vel_interval_s,
-                 filter_type: Literal["None", "KF"] = config.filter_type,
-                 filter_freq_Hz: int = config.filter_freq_Hz,
-                 max_time_lead_is_lost_s: int = config.max_time_lead_is_lost_s
+                 config: DefaultCoSimulatorConfig = DefaultCoSimulatorConfig()
             ) -> None:
         # Settings
         self.egoUAV = egoUAV
         self.leadingUAV = leadingUAV
-        self.sim_fps = sim_fps
-        self.simulation_time_s = simulation_time_s
-        self.camera_fps = camera_fps
-        self.infer_freq_Hz = infer_freq_Hz
-        self.leadingUAV_update_vel_interval_s = leadingUAV_update_vel_interval_s
-        self.filter_type = filter_type
-        self.filter_freq_Hz = filter_freq_Hz
-        self.max_time_lead_is_lost_s = max_time_lead_is_lost_s
-        self.image_res_incr_factor = 3
+        self.config = config
 
         # Folder and File namse
         dt = datetime.datetime.now()
-        self.parent_folder = f"recordings/{dt.year}{dt.month:02d}{dt.day:02d}_{dt.hour:02d}{dt.minute:02d}{dt.second:02d}"
+        self.parent_folder = f"recordings/path_v0/{dt.year}{dt.month:02d}{dt.day:02d}_{dt.hour:02d}{dt.minute:02d}{dt.second:02d}"
         self.images_path = f"{self.parent_folder}/images"
         self.logfile = f"{self.parent_folder}/log.pkl"
         self.setup_file = f"{self.parent_folder}/setup.txt"
+        self.config_file = f"{self.parent_folder}/config.json"
         self.video_path = f"{self.parent_folder}/output.mp4"
         os.makedirs(self.images_path)
 
@@ -89,12 +79,12 @@ class Logger:
         # has been lost.
         self.lost_for_frames = 0
         self.tprog = TerminalProgress(names=["Progress", "Distance", "LeadingUAV Lost For"],
-                                      limits=[self.simulation_time_s*self.camera_fps,
+                                      limits=[config.simulation_time_s*config.camera_fps,
                                               20,
-                                              self.max_time_lead_is_lost_s*self.camera_fps],
-                                      green_area_func=[lambda p: p > self.simulation_time_s*self.camera_fps*0.9, 
+                                              config.max_time_lead_is_lost_s*config.camera_fps],
+                                      green_area_func=[lambda p: p > config.simulation_time_s*config.camera_fps*0.9, 
                                                        lambda d: d < 3.5,
-                                                       lambda l: l < self.max_time_lead_is_lost_s*self.camera_fps*0.5])
+                                                       lambda l: l < config.max_time_lead_is_lost_s*config.camera_fps*0.5])
 
     def create_frame(self, frame: torch.Tensor, is_bbox_frame: bool):
         """
@@ -141,7 +131,6 @@ class Logger:
         self.frame_cnt += 1
 
     def update_frame(self,
-                     camera_frame_idx: int,
                      bbox: Optional[BoundingBox],
                      est_frame_info: EstimatedFrameInfo
                 ):
@@ -159,7 +148,6 @@ class Logger:
         This function mostly helps with the indexing and invokes draw_frame to add the information to the frame.\
         
         Args:
-        - camera_frame_idx: The (global) index of the camera frame to be updated.\
         - bbox: The bbox we have found.\
         - est_frame_info: It is an object returned from EgoUAV. It is all the estimations it \
         has made, based on the offset extracted by the bbox. We also log EgoUAV's point of view \
@@ -173,15 +161,6 @@ class Logger:
         # the info lists. Global meaning the actual index of the frame captured
         # by the camera, considering the first frame captured be 0.
         g_frame_idx = self.last_frames_with_bbox_idx.pop(0)
-
-        # Make sure the global index calculation scheme above works.
-        # Since it has been thoroughly tested, you may remove the try-except block.
-        try:
-            assert(self.info_per_frame[g_frame_idx]["frame_idx"] == camera_frame_idx)
-        except:
-            print(f"Saved frame idx: {self.info_per_frame[g_frame_idx]['frame_idx']}")
-            print(f"True frame idx: {camera_frame_idx}")
-            raise Exception("FRAME INDEXING ERROR!")
         
         # The index of the frame on the list (local index, local to the list)
         frame_list_idx = g_frame_idx - self.next_frame_idx_to_save
@@ -227,8 +206,8 @@ class Logger:
         if bbox:
             frame = add_bbox_to_image(frame, bbox)
 
-        frame = increase_resolution(frame, self.image_res_incr_factor)
-        frame = add_info_to_image(frame, frame_info)
+        frame = increase_resolution(frame, IMG_RESOLUTION_INCR_FACTOR)
+        frame = add_info_to_image(frame, frame_info, self.config.score_threshold)
         return frame
 
     def save_frames(self, finalize: bool = False):
@@ -244,15 +223,17 @@ class Logger:
             # Do not save frames that will be updated in the future
             # these are the one that will include the next bbox and the frames
             # after that.
-            if not finalize and info_idx >= self.last_frames_with_bbox_idx[0]:
+            if not finalize \
+                and self.last_frames_with_bbox_idx \
+                and info_idx >= self.last_frames_with_bbox_idx[0]:
                 break
             # Make sure that all frames you save have the desired resolution
-            if frame.size() == torch.Size([3, config.img_height, config.img_width]):
+            if frame.size() == torch.Size([3, IMG_HEIGHT, IMG_WIDTH]):
                 frame_info = self.merge_to_FrameInfo(bbox=None, sim_info=self.info_per_frame[info_idx])
                 frame = self.draw_frame(frame=frame, bbox=None, frame_info=frame_info)
             elif frame.size() != torch.Size([3,
-                                             self.image_res_incr_factor*config.img_height,
-                                             self.image_res_incr_factor*config.img_width
+                                             IMG_RESOLUTION_INCR_FACTOR*IMG_HEIGHT,
+                                             IMG_RESOLUTION_INCR_FACTOR*IMG_WIDTH
                                            ]):
                 raise Exception("Unexpected frame size!")
             save_image(frame, f"{self.images_path}/img_EgoUAV_{self.info_per_frame[info_idx]['timestamp']}.png")
@@ -267,52 +248,12 @@ class Logger:
         Writes a txt file that contains useful information for the simulation run.
         It is mostly about GlobalConfig variables.
         """
-        # Convert the statistics dict values to strings
-        statstring = ""
-        for key in statistics:
-            statstring += f"{key}: {statistics[key]}\n"
-
-        # Write the file
-        with open(self.setup_file, 'w') as f:
-            f.write(f"# The status of the run (why did the run terminate?)\n"
-                    f"status = {status}\n"
-                    f"\n"
-                    f"# Statistics:\n"
-                    f"{statstring}"
-                    f"\n"
-                    f"# Type of filter used by the controller to filter the offset measurements\n"
-                    f"use_pepper_filter = {config.use_pepper_filter}\n"
-                    f"motion_model = {config.motion_model}\n"
-                    f"filter_type = {self.filter_type}\n"
-                    f"filter_freq_Hz = {self.filter_freq_Hz}\n"
-                    f"\n"
-                    f"# The max acceptable amount of time the EgoUAV has not detected the LeadingUAV\n"
-                    f"max_time_lead_is_lost_s = {self.max_time_lead_is_lost_s}\n"
-                    f"\n"
-                    f"# The upper an lower limit for the velocity on each axis of both UAVs\n"
-                    f"max_vx, max_vy, max_vz = {config.max_vx},  {config.max_vy},  {config.max_vz}\n"
-                    f"min_vx, min_vy, min_vz = {config.min_vx}, {config.min_vy}, {config.min_vz}\n"
-                    f"\n"
-                    f"# The seed used for the random movement of the LeadingUAV\n"
-                    f"leadingUAV_seed = {config.leadingUAV_seed}\n"
-                    f"\n"
-                    f"# The minimum score, for which a detection is considered\n"
-                    f"# valid and thus is translated to EgoUAV movement.\n"
-                    f"score_threshold = {config.score_threshold}\n"
-                    f"\n"
-                    f"# The magnitude of the velocity vector (in 3D space)\n"
-                    f"uav_velocity = {config.uav_velocity}\n"
-                    f"\n"
-                    f"# The weights applied when converting bbox to move command\n"
-                    f"weight_vel_x, weight_vel_y, weight_vel_z = {config.weight_vel_x}, {config.weight_vel_y}, {config.weight_vel_z}\n"
-                    f"\n"
-                    f"# Recording setup\n"
-                    f"sim_fps = {self.sim_fps}\n"
-                    f"simulation_time_s = {self.simulation_time_s}\n"
-                    f"camera_fps = {self.camera_fps}\n"
-                    f"infer_freq_Hz = {self.infer_freq_Hz}\n"
-                    f"leadingUAV_update_vel_interval_s = {self.leadingUAV_update_vel_interval_s}\n"
-            )
+        conf_stat_dict = {**(self.config.__dict__),
+                          "status": status,
+                          **statistics,
+                          "frame_count": self.frame_cnt}
+        with open(self.config_file, 'w') as f:
+            f.write(json.dumps(conf_stat_dict))
 
     def dump_logs(self):
         """
@@ -341,9 +282,9 @@ class Logger:
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         video = cv2.VideoWriter(self.video_path,
                                 fourcc,
-                                self.camera_fps,
-                                (config.img_width*self.image_res_incr_factor,
-                                 config.img_height*self.image_res_incr_factor)
+                                self.config.camera_fps,
+                                (IMG_WIDTH*IMG_RESOLUTION_INCR_FACTOR,
+                                 IMG_HEIGHT*IMG_RESOLUTION_INCR_FACTOR)
                 )
     
         # Appending the images to the video one by one
@@ -438,7 +379,7 @@ class Logger:
                 dist_mse += (sim_dist - est_dist).item()**2
                 dist_meas_cnt += 1
 
-            if self.filter_type == "None":
+            if self.config.filter_type == "None":
                 lead_vel_mse = None
             elif info["err_lead_vel"] and lead_vel_mse is not None:
                 lead_vel_mse += np.linalg.norm(np.array(info["err_lead_vel"])).item()**2
@@ -466,6 +407,9 @@ class Logger:
         print("\nStatistics...")
         for key in stats:
             print(f"{key}: {stats[key]}")
+
+        print(f"Camera frames: {self.frame_cnt}")
+        print(f"Evaluated frames: {len(self.updated_info_per_frame)}")
 
 
 class GraphLogs:
@@ -598,7 +542,7 @@ class GraphLogs:
             max, min = vals.max(), vals.min()
             if max - min < 5:
                 avg = (max + min)/2
-                half_range = config.movement_plot_min_range / 2
+                half_range = MOVEMENT_PLOT_MIN_RANGE / 2
                 getattr(ax, ticks_func)(avg-half_range, avg+half_range)
 
         ax.legend()
@@ -609,7 +553,6 @@ class GraphLogs:
         ax.invert_zaxis() # type: ignore
         fig.savefig(filename)
         plt.close(fig)
-
 
 class TerminalProgress():
     def __init__(self,

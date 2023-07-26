@@ -2,7 +2,7 @@ import os
 
 import pandas as pd
 
-from GlobalConfig import GlobalConfig as config
+from constants import FILENAME_LEADING_ZEROS
 
 def remove_entries_of_missing_images(path_to_images: str,
                                      path_to_csv: str
@@ -31,7 +31,7 @@ def rename_images(path_to_images: str,
     def rename(row: pd.Series):
         old_name = row["filename"]
         if isinstance(row.name, int):
-            new_name = str(row.name + start_idx).zfill(config.filename_leading_zeros) + ".png"
+            new_name = str(row.name + start_idx).zfill(FILENAME_LEADING_ZEROS) + ".png"
         else:
             raise Exception(f"Unexpected index (name) type of row, expecting int, got {type(row.name)}")
         os.rename(os.path.join(path_to_images, old_name),

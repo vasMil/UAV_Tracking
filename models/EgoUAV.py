@@ -8,7 +8,14 @@ import torch
 from torchvision import transforms as T
 
 from models.UAV import UAV
-from GlobalConfig import GlobalConfig as config
+from project_types import Filter_t, Motion_model_t
+from constants import EGO_UAV_NAME, PORT,\
+    FOCAL_LENGTH_X, FOCAL_LENGTH_Y,\
+    PAWN_SIZE_X, PAWN_SIZE_Y, PAWN_SIZE_Z,\
+    IMG_HEIGHT, IMG_WIDTH,\
+    HORIZ_FOV, VERT_FOV,\
+    CAMERA_OFFSET_X,\
+    SCORE_THRESHOLD
 from models.BoundingBox import BoundingBox
 from nets.DetectionNets import Detection_FasterRCNN
 from nets.DetectionNets import Detection_SSD
@@ -18,12 +25,17 @@ from models.FrameInfo import EstimatedFrameInfo
 
 class EgoUAV(UAV):
     def __init__(self,
-                 name: str,
-                 filter_type: Literal["None", "KF"] = "None",
-                 port: int = 41451,
+                 name: str = EGO_UAV_NAME,
+                 inference_freq_Hz: int = 0,
+                 vel_magn: float = 0,
+                 filter_type: Filter_t = "KF",
+                 motion_model: Motion_model_t = "CA",
+                 use_pepper_filter: bool = True,
+                 weight_vel: Tuple[float, float, float] = (1, 1, 1,),
+                 port: int = PORT,
                  genmode: bool = False
             ) -> None:
-        super().__init__(name, port, genmode=genmode)
+        super().__init__(name, vel_magn, port, genmode=genmode)
         # Initialize the NN
         if genmode:
             return
@@ -31,7 +43,12 @@ class EgoUAV(UAV):
         # self.net.load("nets/checkpoints/rcnn100.checkpoint")
         self.net = Detection_SSD()
         self.net.load("nets/checkpoints/ssd300.checkpoint")
-        self.controller = Controller(filter_type)
+        self.controller = Controller(vel_magn=vel_magn,
+                                     dt=(1/inference_freq_Hz),
+                                     weight_vel=weight_vel,
+                                     filter_type=filter_type,
+                                     motion_model=motion_model,
+                                     use_pepper_filter=use_pepper_filter)
 
     def _getImage(self, view_mode: bool = False) -> torch.Tensor:
         """
@@ -60,29 +77,6 @@ class EgoUAV(UAV):
         else:
             img = torch.from_numpy(img)
         return img
-
-    def _cheat_move(
-            self,
-            position_vec: Optional[torch.Tensor] = None,
-            velocity_vec: Optional[torch.Tensor] = None
-        ) -> Future:
-        """
-        This function is designed to help me determine what information to use as ground truth, when
-        training the neural network.
-        You should specify exactly one of the two arguments!
-        - position_vec: if specified, should contain the latest position of the leadingUAV
-        - velocity_vec: if specified, should contain the velocities used by moveByVelocity() method on the last call for the leadingUAV
-        """
-        if ((position_vec is None and velocity_vec is None) or \
-             (position_vec is not None and velocity_vec is not None)):
-            raise Exception("EgoUAV::_cheat_move: Exactly one of two arguments should not be None")
-
-        if velocity_vec is not None:
-            self.lastAction = self.moveByVelocityAsync(*(velocity_vec.tolist()), duration=config.move_duration)
-        elif position_vec is not None:
-            self.lastAction = self.moveToPositionAsync(*(position_vec.tolist()))
-
-        return self.lastAction
 
     def _get_y_distance(self, x_distance: float, bbox: BoundingBox, mode: Literal["focal", "mpp", "fix_focal", "fix_mpp"]) -> float:
         """
@@ -120,26 +114,26 @@ class EgoUAV(UAV):
             # perpendicular to the image, by offseting the x1 coordinate of the predicted bounding box
             # by expected_width/2.
             # The same logic may be applied when the leadingUAV is on the right of egoUAV.
-            expected_bbox_width_px = config.focal_length_x * config.pawn_size_x / x_distance
+            expected_bbox_width_px = FOCAL_LENGTH_X * PAWN_SIZE_X / x_distance
 
-            if bbox.x2 < config.img_width/2: # The leadingUAV is at the left of the egoUAV
+            if bbox.x2 < IMG_WIDTH/2: # The leadingUAV is at the left of the egoUAV
                 bbox_fixed_center_y = bbox.x1 + expected_bbox_width_px/2
-            elif bbox.x1 > config.img_width/2:
+            elif bbox.x1 > IMG_WIDTH/2:
                 bbox_fixed_center_y = bbox.x2 - expected_bbox_width_px/2
             else:
                 bbox_fixed_center_y = bbox.x_center
 
-            y_box_displacement = bbox_fixed_center_y - config.img_width/2
+            y_box_displacement = bbox_fixed_center_y - IMG_WIDTH/2
         else:
             mode2 = mode
-            y_box_displacement = bbox.x_center - config.img_width/2
+            y_box_displacement = bbox.x_center - IMG_WIDTH/2
 
         if mode2 == "focal":
-            return y_box_displacement * x_distance / config.focal_length_x
+            return y_box_displacement * x_distance / FOCAL_LENGTH_X
 
         if mode2 == "mpp":
-            img_width_meters = 2 * x_distance / math.tan((math.pi - config.horiz_fov)/2)
-            return y_box_displacement * (img_width_meters / config.img_width)
+            img_width_meters = 2 * x_distance / math.tan((math.pi - HORIZ_FOV)/2)
+            return y_box_displacement * (img_width_meters / IMG_WIDTH)
 
         raise ValueError("_get_z_distance: Invalid mode!")
 
@@ -179,26 +173,26 @@ class EgoUAV(UAV):
             # perpendicular to the image, by offseting the y1 coordinate of the predicted bounding box
             # by expected_height/2.
             # The same logic may be applied to cases aswell.
-            expected_bbox_height_px = config.focal_length_y * config.pawn_size_z / x_distance
+            expected_bbox_height_px = FOCAL_LENGTH_Y* PAWN_SIZE_Z / x_distance
 
-            if bbox.y2 < config.img_height/2: # The leadingUAV is higher than the egoUAV
+            if bbox.y2 < IMG_HEIGHT/2: # The leadingUAV is higher than the egoUAV
                 bbox_fixed_center_z = bbox.y1 + expected_bbox_height_px/2
-            elif bbox.y1 > config.img_height/2:
+            elif bbox.y1 > IMG_HEIGHT/2:
                 bbox_fixed_center_z = bbox.y2 - expected_bbox_height_px/2
             else:
                 bbox_fixed_center_z = bbox.y_center
 
-            z_box_displacement = bbox_fixed_center_z - config.img_height/2
+            z_box_displacement = bbox_fixed_center_z - IMG_HEIGHT/2
         else:
             mode2 = mode
-            z_box_displacement = bbox.y_center - config.img_height/2
+            z_box_displacement = bbox.y_center - IMG_HEIGHT/2
 
         if mode2 == "focal":
-            return z_box_displacement * x_distance / config.focal_length_y
+            return z_box_displacement * x_distance / FOCAL_LENGTH_Y
 
         if mode2 == "mpp":
-            img_height_meters = 2 * x_distance / math.tan((math.pi - config.vert_fov)/2)
-            return z_box_displacement * (img_height_meters / config.img_height)
+            img_height_meters = 2 * x_distance / math.tan((math.pi - VERT_FOV)/2)
+            return z_box_displacement * (img_height_meters / IMG_HEIGHT)
 
         raise ValueError("_get_z_distance: Invalid mode!")
 
@@ -215,7 +209,7 @@ class EgoUAV(UAV):
         if not bbox:
             return None
         dist = np.zeros([3,1])
-        x_offset = config.focal_length_x * config.pawn_size_y / bbox.width
+        x_offset = FOCAL_LENGTH_X * PAWN_SIZE_Y / bbox.width
         dist[0] = x_offset
         dist[1] = self._get_y_distance(x_offset, bbox, "focal")
         dist[2] = self._get_z_distance(x_offset, bbox, "focal")
@@ -223,7 +217,7 @@ class EgoUAV(UAV):
         # The distance on the x axis so far, is from EgoUAV's camera,
         # to the back side of the LeadingUAV. We require this distance to be
         # from one center to the other.
-        dist[0] += (config.camera_offset_x + config.pawn_size_x/2)
+        dist[0] += (CAMERA_OFFSET_X + PAWN_SIZE_X/2)
         return dist
 
     def moveToBoundingBoxAsync(self,
@@ -255,7 +249,7 @@ class EgoUAV(UAV):
         - An EstimatedFrameInfo object, that contains estimations of target's
         velocity and target's position etc. (If available)
         """
-        if (not bbox) or (bbox.score and bbox.score < config.score_threshold):
+        if (not bbox) or (bbox.score and bbox.score < SCORE_THRESHOLD):
             offset = None
         else:
             if bbox.score is None:
@@ -265,11 +259,9 @@ class EgoUAV(UAV):
         pitch_roll_yaw_deg = np.array(orient)
         current_pos = self.getMultirotorState().kinematics_estimated.position
         current_pos = np.expand_dims(current_pos.to_numpy_array(), axis=1)
-        velocity, yaw_deg, est_frame_info = self.controller.step(offset,
-                                                                 pitch_roll_yaw_deg,
-                                                                 dt,
-                                                                 current_pos
-        )
+        velocity, yaw_deg, est_frame_info = self.controller.step(offset=offset,
+                                                                 pitch_roll_yaw_deg=pitch_roll_yaw_deg,
+                                                                 ego_pos=current_pos)
         self.lastAction = self.moveByVelocityAsync(*(velocity.squeeze()),
                                                    duration=dt,
                                                    yaw_mode=airsim.YawMode(False, yaw_deg)
@@ -307,7 +299,6 @@ class EgoUAV(UAV):
 
         velocity, yaw_deg, est_frame_info = self.controller.step(offset=None,
                                                                  pitch_roll_yaw_deg=np.array([0, 0, 0]),
-                                                                 dt=dt,
                                                                  ego_pos=current_pos
                                                             )
 

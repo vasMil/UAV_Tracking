@@ -5,16 +5,16 @@ import torchvision.transforms.functional as F
 from PIL import ImageFont, ImageDraw
 import numpy as np
 
-from GlobalConfig import GlobalConfig as config
+from constants import IMG_HEIGHT, IMG_WIDTH
 from models.BoundingBox import BoundingBox
 from models.FrameInfo import FrameInfo
 
 def add_bbox_to_image(image: torch.Tensor, bbox: BoundingBox) -> torch.Tensor:
     image = image.clone()
     x1 = max(round(bbox.x1), 0)
-    x2 = min(round(bbox.x2), config.img_width-1)
+    x2 = min(round(bbox.x2), IMG_WIDTH-1)
     y1 = max(round(bbox.y1), 0)
-    y2 = min(round(bbox.y2), config.img_height-1)
+    y2 = min(round(bbox.y2), IMG_HEIGHT-1)
     for i, color in enumerate([1, 0, 0]):
         image[i, y1, x1:x2] = color
         image[i, y2, x1:x2] = color
@@ -23,7 +23,8 @@ def add_bbox_to_image(image: torch.Tensor, bbox: BoundingBox) -> torch.Tensor:
     return image
 
 def add_info_to_image(image: torch.Tensor,
-                      frameInfo: FrameInfo
+                      frameInfo: FrameInfo,
+                      score_threshold: float
                     ) -> torch.Tensor:
     # Configure font size and spacing between two lines of text
     # as well as default colors
@@ -61,7 +62,7 @@ def add_info_to_image(image: torch.Tensor,
         if info == None:
             color = blue
         elif key == "bbox_score":
-            color = green if info >= config.score_threshold else red
+            color = green if info >= score_threshold else red
         elif key.split('_')[0] == "err":
             color = green if np.linalg.norm(np.array(info)) < 1 else red
         else:

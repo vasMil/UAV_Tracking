@@ -1,9 +1,10 @@
-from typing import Literal, Optional, Tuple
+from typing import Optional, Tuple
 import math
 
 import numpy as np
 
-from GlobalConfig import GlobalConfig as config
+from constants import EPS
+from project_types import Filter_t, Motion_model_t
 from controller.KalmanFilter import KalmanFilter
 from controller.PepperFilter import PepperFilter
 from utils.operations import vector_transformation
@@ -37,8 +38,17 @@ class Controller():
        desired velocity (i.e. config.uav_velocity).
     """
     def __init__(self,
-                 filter_type: Literal["None", "KF"] = "None"
+                 vel_magn: float,
+                 dt: float,
+                 weight_vel: Tuple[float, float, float],
+                 filter_type: Filter_t = "None",
+                 motion_model: Motion_model_t = "CA",
+                 use_pepper_filter: bool = True
             ) -> None:
+        self.vel_magn = vel_magn
+        self.dt = dt
+        self.weight_vel = weight_vel
+        self.use_pepper_filter = use_pepper_filter
         # Helper variables that preserve the previous instruction
         # of the controller
         self.prev_vel = np.zeros([3, 1])
@@ -53,23 +63,21 @@ class Controller():
             P_init = np.diag([0.01, 0.01, 0.01, 1, 1, 1, 1, 1, 1])
             self.filter = KalmanFilter(X_init=X_init,
                                        P_init=P_init,
-                                       dt=(1/config.infer_freq_Hz),
-                                       motion_model=config.motion_model,
+                                       dt=dt,
+                                       motion_model=motion_model,
                                        forget_factor_a=1.01)
 
     def offset_to_velocity(self, offset: np.ndarray) -> np.ndarray:
         # Multiply with the weights
-        offset = np.multiply(offset, np.array(
-            [[config.weight_vel_x], [config.weight_vel_y], [config.weight_vel_z]]
-        ))
+        offset = np.multiply(offset.T, self.weight_vel).T
 
         # Preserve the direction of the offset, normalize the vector
         # and multiply with the desired velocity magnitude.
         offset_magn = np.linalg.norm(offset) # ignore: type
         if offset_magn != 0:
             offset /= offset_magn
-            velocity = np.multiply(offset, config.uav_velocity)
-            assert(config.uav_velocity - np.linalg.norm(velocity) < config.eps)
+            velocity = np.multiply(offset, self.vel_magn)
+            assert(self.vel_magn - np.linalg.norm(velocity) < EPS)
         else:
             velocity = np.zeros([3,1])
         return velocity
@@ -100,11 +108,10 @@ class Controller():
         Returns:
         The yaw angle at which the target will be found (in degrees).
         """
-        dt = (1/config.infer_freq_Hz)
         if lead_velocity is not None:
-            offset += lead_velocity*dt
+            offset += lead_velocity*self.dt
         if ego_velocity is not None:
-            offset -= ego_velocity*dt
+            offset -= ego_velocity*self.dt
         if offset[0] == 0:
             return 0
         angle_deg = math.degrees(math.atan(offset[1] / offset[0]))
@@ -117,7 +124,6 @@ class Controller():
     def step(self,
              offset: Optional[np.ndarray],
              pitch_roll_yaw_deg: np.ndarray,
-             dt: float,
              ego_pos: np.ndarray
         ) -> Tuple[np.ndarray, float, EstimatedFrameInfo]:
         """
@@ -157,12 +163,12 @@ class Controller():
 
         # Subtract the distance covered by the EgoUAV, while waiting
         # for the inference to finish and/or the controller to advance
-        ego_pos -= self.prev_vel*dt
+        ego_pos -= self.prev_vel*self.dt
         
         # Cleanup any pepper noise in the measurements
         # (i.e. discard measurements that are impossible, since there is an upper limit to the velocity of a UAV)
-        if config.use_pepper_filter:
-            offset = self.pepper_filter.step(meas=offset, max_rel_vel=config.uav_velocity, time_interval=dt)
+        if self.use_pepper_filter:
+            offset = self.pepper_filter.step(meas=offset, max_magn_uav_vel=self.vel_magn, time_interval=self.dt)
 
         # If the measurement is None and we have no filter to make up for it
         # continue your movement.
@@ -191,7 +197,7 @@ class Controller():
             est_frame_info["leadingUAV_velocity"] = tuple(leading_vel.squeeze())
 
         # Convert the offset
-        velocity = self.offset_to_velocity(offset) # type: ignore
+        velocity = self.offset_to_velocity(offset=offset) # type: ignore
         yaw_deg = self.offset_to_yaw_angle(offset, # type: ignore
                                            lead_velocity=leading_vel,
                                            ego_velocity=velocity)

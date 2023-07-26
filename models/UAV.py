@@ -1,11 +1,8 @@
-from typing import Tuple
+from typing import Tuple, Optional
 import math
 
-import numpy as np
 import airsim
 from msgpackrpc.future import Future
-
-from GlobalConfig import GlobalConfig as config
 
 class UAV():
     """
@@ -14,8 +11,13 @@ class UAV():
     - EgoUAV
     """
 
-    def __init__(self, name: str, port: int = 41451, genmode: bool = False) -> None:
+    def __init__(self,
+                 name: str,
+                 vel_magn: float = 0.,
+                 port: int = 41451,
+                 genmode: bool = False) -> None:
         self.name = name
+        self.vel_magn = vel_magn
         self.client = airsim.MultirotorClient(port=port)
         print(f"UAV {self.name} listens at port {port}")
 
@@ -49,7 +51,7 @@ class UAV():
         self.client.armDisarm(True, vehicle_name=self.name)
      
     def moveToPositionAsync(self, x, y, z,
-                            velocity=config.uav_velocity,
+                            velocity: Optional[float] = None,
                             drivetrain: int = airsim.DrivetrainType.MaxDegreeOfFreedom,
                             yaw_mode: airsim.YawMode = airsim.YawMode()
                         ) -> Future:
@@ -61,9 +63,9 @@ class UAV():
         (i.e. (0,0,0)) is the location where the drone spawned!
         (source: https://github.com/microsoft/AirSim/issues/4413)
         """
-        # self.lastAction = self.client.moveToPositionAsync(x, y, z, velocity=velocity, vehicle_name=self.name, yaw_mode=yaw_mode)
+        vel = self.vel_magn if velocity is None else velocity
         self.lastAction = self.client.moveToPositionAsync(x, y, z,
-                                                          velocity=velocity,
+                                                          velocity=vel,
                                                           drivetrain=drivetrain,
                                                           yaw_mode=yaw_mode,
                                                           vehicle_name=self.name)
@@ -91,12 +93,13 @@ class UAV():
 
     def moveOnPathAsync(self,
                         path,
-                        velocity = config.uav_velocity,
+                        velocity: Optional[float] = None,
                         drivetrain: int = airsim.DrivetrainType.MaxDegreeOfFreedom,
                         yaw_mode = airsim.YawMode()
                     ) -> Future:
+        vel = self.vel_magn if velocity is None else velocity
         self.lastAction = self.client.moveOnPathAsync(path,
-                                                      velocity=velocity,
+                                                      velocity=vel,
                                                       drivetrain=drivetrain,
                                                       yaw_mode=yaw_mode,
                                                       vehicle_name=self.name

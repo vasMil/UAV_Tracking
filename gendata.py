@@ -7,17 +7,17 @@ import torch
 import pandas as pd
 from torchvision.utils import save_image
 
+from constants import RAND_MOVE_BOX_X, RAND_MOVE_BOX_Y, RAND_MOVE_BOX_Z,\
+    LEADING_UAV_SEED, FILENAME_LEADING_ZEROS
 from models.EgoUAV import EgoUAV
 from models.LeadingUAV import LeadingUAV
-from GlobalConfig import GlobalConfig as config
-
 
 def create_sample(
         egoUAV: EgoUAV,
         leadingUAV: LeadingUAV,
-        ego_box_lims_x: Tuple[float, float] = config.rand_move_box_x,
-        ego_box_lims_y: Tuple[float, float] = config.rand_move_box_y,
-        ego_box_lims_z: Tuple[float, float] = config.rand_move_box_z
+        ego_box_lims_x: Tuple[float, float] = RAND_MOVE_BOX_X,
+        ego_box_lims_y: Tuple[float, float] = RAND_MOVE_BOX_Y,
+        ego_box_lims_z: Tuple[float, float] = RAND_MOVE_BOX_Z
     ) -> Tuple[torch.Tensor, airsim.Vector3r]:
     """
     Given two UAVs return a tuple consisting of an image (torch.Tensor) and the offset.
@@ -101,7 +101,7 @@ def generate_training_data(
     client.confirmConnection()
 
     # Create the vehicles and perform the takeoff
-    leadingUAV = LeadingUAV("LeadingUAV", seed=config.leadingUAV_seed, genmode=True)
+    leadingUAV = LeadingUAV("LeadingUAV", seed=LEADING_UAV_SEED, genmode=True)
     egoUAV = EgoUAV("EgoUAV", genmode=True)
 
     # Calculate the distance between the two UAVs
@@ -118,7 +118,7 @@ def generate_training_data(
     for s in range(num_samples):
         img, offset = create_sample(egoUAV, leadingUAV)
         # Save the image
-        img_filename = str(sample_idx + s).zfill(config.filename_leading_zeros) + ".png"
+        img_filename = str(sample_idx + s).zfill(FILENAME_LEADING_ZEROS) + ".png"
         save_image(img, os.path.join(root_dir, img_filename))
         # Update the df
         new_row_df = pd.DataFrame([[img_filename, *offset]], columns=csv_df.columns)

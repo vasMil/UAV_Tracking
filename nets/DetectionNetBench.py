@@ -13,9 +13,8 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
+from config import DefaultTrainingConfig
 from models.BoundingBox import BoundingBoxDataset, BoundBoxDataset_Item, BoundingBox
-
-from GlobalConfig import GlobalConfig as config
 
 class Losses_dict_t(TypedDict):
     train: List[float]
@@ -63,6 +62,7 @@ class DetectionNetBench():
     def __init__(self,
                  model: nn.Module,
                  model_id: str,
+                 config: DefaultTrainingConfig = DefaultTrainingConfig(),
                  root_train_dir: str = "", json_train_labels: str = "",
                  root_test_dir: str = "", json_test_labels: str = ""
             ) -> None:
@@ -130,6 +130,7 @@ class DetectionNetBench():
 
         # Model parameters
         self.batch_size = config.default_batch_size
+        self.num_workers = config.num_workers
 
         # Checkpoint info
         self.epoch: int = 0
@@ -285,7 +286,7 @@ class DetectionNetBench():
                 ax.add_patch(rect)
         plt.show()
 
-    def train(self, num_epochs: int = config.num_epochs) -> None:
+    def train(self, num_epochs: int) -> None:
         """
         Trains the model using the data specified at object initialization.
         Implementation is based on: 
@@ -311,7 +312,7 @@ class DetectionNetBench():
         dataloaders = {
             x: DataLoader(
                 datasets[x], batch_size=self.batch_size, shuffle=True, 
-                num_workers=config.num_workers,
+                num_workers=self.num_workers,
                 collate_fn=self._collate_fn
             ) for x in ["train", "val"]
         }
@@ -421,7 +422,7 @@ class DetectionNetBench():
     @torch.no_grad()
     def eval(self,
              image: torch.Tensor,
-             threshold: float = config.score_threshold,
+             threshold: float,
              visualize: bool = False
         ) -> Tuple[Optional[BoundingBox], Optional[float]]:
         """
@@ -524,7 +525,11 @@ class DetectionNetBench():
         # Display the predicted bounding boxes
         self._show_bounding_boxes_batch(images, pred)
 
-    def get_inference_frequency(self, num_tests: int, warmup: int, cudnn_benchmark: bool = False) -> None:
+    def get_inference_frequency(self,
+                                num_tests: int,
+                                warmup: int,
+                                cudnn_benchmark: bool = False
+        ) -> None:
         """
         Times some inferences in order to calculate the frequency the NN it hosts
         operates at.
@@ -561,7 +566,8 @@ class DetectionNetBench():
         for _ in range(warmup):
             images, _ = next(iter(dataloader))
             dev_images = [img.to(self.device) for img in images]
-            self.eval(dev_images[0])
+            self.eval(image=dev_images[0],
+                      threshold=0)
         
         # Perform the evaluation using self.model()
         start = time.time()
@@ -583,7 +589,7 @@ class DetectionNetBench():
         first: float = 0
         for i in range(num_tests):
             images, _ = next(iter(dataloader))
-            self.eval(images[0])
+            self.eval(image=images[0], threshold=0)
             if i == 0: first = time.time()
         end = time.time()
         # Calculate the average and report to the terminal

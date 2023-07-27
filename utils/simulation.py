@@ -1,10 +1,11 @@
-from typing import List, Literal
+from typing import List
 import math
 
 import numpy as np
 import airsim
 
 from models.UAV import UAV
+from project_types import Path_version_t
 
 def sim_calculate_angle(uav_source: UAV, uav_target: UAV) -> float:
     source_pos = np.expand_dims(
@@ -88,7 +89,7 @@ def getSinusoidalPath(num_points: int = 1000,
 
     return path
 
-def getTestPath(start_pos: airsim.Vector3r, version: Literal["v0", "v1", "v2"] = "v2") -> List[airsim.Vector3r]:
+def getTestPath(start_pos: airsim.Vector3r, version: Path_version_t = "v2") -> List[airsim.Vector3r]:
     """
     Get a predefined path, given the starting position of the vehicle.
     """

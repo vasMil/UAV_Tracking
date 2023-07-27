@@ -66,3 +66,8 @@ RAND_MOVE_BOX_Z: Tuple[float, float] = (-10., -1.,) # Min dist from the ground i
 # increase wait_stationarity.
 MEASUREMENT_THREASHOLD = (0.1, 0.1, 0.1)
 FILENAME_LEADING_ZEROS = 4
+
+#########################################################################################
+########################################## GRAPHS #######################################
+#########################################################################################
+STATUS_COLORS = ["darkred", "indianred", "orangered", "salmon", "green", "mediumorchid", "blueviolet"]

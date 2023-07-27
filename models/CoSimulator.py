@@ -1,9 +1,9 @@
 from typing import Optional, List
 import os
+import time
 
 import airsim
 import torch
-import numpy as np
 
 from constants import EGO_UAV_NAME, IMG_HEIGHT, IMG_WIDTH
 from project_types import Status_t, _map_to_status_code
@@ -141,7 +141,7 @@ class CoSimulator():
     def hook_leadingUAV_move(self):
         # self.leadingUAV.random_move(self.leadingUAV_update_vel_interval_s)
         if self.frame_idx == 0:
-            self.leading_path = getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position, "v0")
+            self.leading_path = getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position, "v1")
             self.leadingUAV.moveOnPathAsync(self.leading_path)
 
     def hook_net_inference(self) -> bool:

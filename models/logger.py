@@ -1,4 +1,4 @@
-from typing import List, Optional, Literal, Tuple, Callable, Dict
+from typing import List, Optional, Literal, Tuple, Callable
 from operator import itemgetter
 import datetime, time
 import os
@@ -13,7 +13,7 @@ import plotext as tplt
 import airsim
 import json
 
-from project_types import Status_t
+from project_types import Status_t, Statistics_t, ExtendedCoSimulatorConfig_t
 from config import DefaultCoSimulatorConfig
 from constants import IMG_RESOLUTION_INCR_FACTOR,\
     MOVEMENT_PLOT_MIN_RANGE,\
@@ -56,7 +56,7 @@ class Logger:
 
         # Folder and File namse
         dt = datetime.datetime.now()
-        self.parent_folder = f"recordings/path_v0/{dt.year}{dt.month:02d}{dt.day:02d}_{dt.hour:02d}{dt.minute:02d}{dt.second:02d}"
+        self.parent_folder = f"recordings/path_v1/{dt.year}{dt.month:02d}{dt.day:02d}_{dt.hour:02d}{dt.minute:02d}{dt.second:02d}"
         self.images_path = f"{self.parent_folder}/images"
         self.logfile = f"{self.parent_folder}/log.pkl"
         self.setup_file = f"{self.parent_folder}/setup.txt"
@@ -243,15 +243,33 @@ class Logger:
         # Update the index of the next frame you want to save
         self.next_frame_idx_to_save += idx
 
-    def write_setup(self, status: Status_t, statistics: Dict[str, Optional[float]]):
+    def write_setup(self, status: Status_t, statistics: Statistics_t):
         """
         Writes a txt file that contains useful information for the simulation run.
         It is mostly about GlobalConfig variables.
         """
-        conf_stat_dict = {**(self.config.__dict__),
-                          "status": status,
-                          **statistics,
-                          "frame_count": self.frame_cnt}
+        conf_stat_dict: ExtendedCoSimulatorConfig_t = {
+            "uav_velocity": self.config.uav_velocity,
+            "score_threshold": self.config.score_threshold,
+            "max_vel": self.config.max_vel,
+            "min_vel": self.config.min_vel,
+            "weight_vel": self.config.weight_vel,
+            "sim_fps": self.config.sim_fps,
+            "simulation_time_s": self.config.simulation_time_s,
+            "camera_fps": self.config.camera_fps,
+            "infer_freq_Hz": self.config.infer_freq_Hz,
+            "filter_freq_Hz": self.config.filter_freq_Hz,
+            "filter_type": self.config.filter_type,
+            "motion_model": self.config.motion_model,
+            "use_pepper_filter": self.config.use_pepper_filter,
+            "leadingUAV_update_vel_interval_s": self.config.leadingUAV_update_vel_interval_s,
+            "max_time_lead_is_lost_s": self.config.max_time_lead_is_lost_s,
+            "status": status,
+            "frame_count": self.frame_cnt,
+            "dist_mse": statistics["dist_mse"],
+            "lead_vel_mse": statistics["lead_vel_mse"],
+            "avg_true_dist": statistics["avg_true_dist"]
+        }
         with open(self.config_file, 'w') as f:
             f.write(json.dumps(conf_stat_dict))
 
@@ -360,7 +378,7 @@ class Logger:
         }
         return frameInfo
 
-    def get_statistics(self) -> Dict[str, Optional[float]]:
+    def get_statistics(self) -> Statistics_t:
         n = len(self.updated_info_per_frame)
         avg_true_dist: float = 0.
         # Some missing values may occure due to frames not
@@ -385,7 +403,8 @@ class Logger:
                 lead_vel_mse += np.linalg.norm(np.array(info["err_lead_vel"])).item()**2
                 lead_vel_meas_cnt += 1
 
-        return {"dist_mse": dist_mse/dist_meas_cnt,
+        return {
+                "dist_mse": dist_mse/dist_meas_cnt,
                 "lead_vel_mse": lead_vel_mse/lead_vel_meas_cnt if lead_vel_mse else None,
                 "avg_true_dist": avg_true_dist/n
                }
@@ -394,7 +413,7 @@ class Logger:
         # Write the mp4 file
         print("\nWriting the video...")
         self.save_frames(finalize=True)
-        self.write_video()
+        # self.write_video()
 
         # Write a setup.txt file containing all the important configuration options used for
         # this run
@@ -550,6 +569,7 @@ class GraphLogs:
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z') # type: ignore
+        ax.invert_yaxis()
         ax.invert_zaxis() # type: ignore
         fig.savefig(filename)
         plt.close(fig)

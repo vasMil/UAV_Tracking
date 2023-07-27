@@ -1,6 +1,6 @@
-from typing import List, Tuple
+from typing import List, Tuple, TypedDict
 
-from project_types import Filter_t, Motion_model_t
+from project_types import Filter_t, Motion_model_t, Status_t
 
 class DefaultTrainingConfig():
     def __init__(self,
@@ -81,7 +81,7 @@ class DefaultCoSimulatorConfig():
         self.infer_freq_Hz = infer_freq_Hz
         self.filter_freq_Hz = filter_freq_Hz
         self.filter_type: Filter_t = filter_type
-        self.motion_model = motion_model
+        self.motion_model: Motion_model_t = motion_model
         self.use_pepper_filter = use_pepper_filter
         self.leadingUAV_update_vel_interval_s = leadingUAV_update_vel_interval_s
         self.max_time_lead_is_lost_s = max_time_lead_is_lost_s

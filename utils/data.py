@@ -1,8 +1,24 @@
+from typing import List, Tuple, Any, get_args
 import os
+import json
 
 import pandas as pd
+import pickle
+import airsim
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
 
-from constants import FILENAME_LEADING_ZEROS
+from constants import FILENAME_LEADING_ZEROS, STATUS_COLORS
+from models.FrameInfo import FrameInfo
+from project_types import Status_t, Path_version_t, ExtendedCoSimulatorConfig_t, map_status_to_color, _map_to_status_code
+
+def get_folders_in_path(path: str) -> List[str]:
+    folders = []
+    for entry in os.scandir(path):
+        if entry.is_dir():
+            folders.append(os.path.join(path, entry.name))
+    return folders
 
 def remove_entries_of_missing_images(path_to_images: str,
                                      path_to_csv: str
@@ -42,3 +58,92 @@ def rename_images(path_to_images: str,
     df = pd.read_csv(path_to_csv)
     df["filename"] = df.apply(rename, axis=1)
     df.to_csv(path_to_csv, mode="w", index=False)
+
+def folder_to_info(path: str) -> Tuple[List[FrameInfo], ExtendedCoSimulatorConfig_t, Status_t]:
+    pkl_file = os.path.join(path, "log.pkl")
+    json_file = os.path.join(path, "config.json")
+    with open(pkl_file, 'rb') as f:
+        frames_info: List[FrameInfo] = pickle.load(file=f)
+
+    with open(json_file, 'r') as f:
+        extended_config: ExtendedCoSimulatorConfig_t = json.load(fp=f)
+    
+    status: Status_t = extended_config["status"]
+    return (frames_info, extended_config, status)
+
+def update_movement_plots(path: str, start_pos: airsim.Vector3r, path_version: Path_version_t):
+    from models.logger import GraphLogs
+    from utils.simulation import getTestPath
+    folders = get_folders_in_path(path)
+    for folder in folders:
+        movement_file = os.path.join(folder, "movement.png")
+        frames_info, _, _ = folder_to_info(folder)
+        os.remove(movement_file)
+        gl = GraphLogs(frames_info)
+        gl.plot_movement_3d(movement_file, getTestPath(start_pos=start_pos, version=path_version))
+
+def _plot_for_path(fig: Any, ax: plt.Axes, x: np.ndarray, y: np.ndarray, c: List[str]):
+    # Calculate the average y values (between runs)
+    unique_x = np.unique(x)
+    min_y = np.zeros(len(unique_x))
+    mean_y = np.zeros(len(unique_x))
+    max_y = np.zeros(len(unique_x))
+    for i, freq in enumerate(unique_x):
+        mask = (x == freq)
+        dists_for_freq = y[mask]
+        min_y[i] = dists_for_freq.min()
+        mean_y[i] = dists_for_freq.mean()
+        max_y[i] = dists_for_freq.max()
+
+    ax.plot(unique_x, mean_y, linewidth=1, color="blue")
+    ax.errorbar(unique_x, mean_y, yerr=np.stack([mean_y - min_y, max_y - mean_y]), linewidth=1, capsize=0, color="blue")
+    # Scatter with colorbar depicting the status
+    ax.scatter(x=x, y=y, c=c)
+    cmap = ListedColormap(STATUS_COLORS) # type: ignore
+    cbar = fig.colorbar(mappable=None, cmap=cmap)
+    cbar.set_ticks(((np.arange(len(STATUS_COLORS)) + 0.5)/len(STATUS_COLORS)).tolist())
+    cbar.set_ticklabels([ustat for ustat in get_args(Status_t)]) # type: ignore
+
+    # Other options
+    ax.set_xlabel("SSD - Inference Frequency (Hz)")
+    ax.set_ylabel("Average True Distance (m)")
+
+def plot_for_path(folder_path: str,
+                  dist_filename: str,
+                  time_filename: str,
+                  path_version: Path_version_t
+    ) -> None:
+    folders = get_folders_in_path(folder_path)
+    n = len(folders)
+    freqs = np.zeros(n)
+    dists = np.zeros(n)
+    times = np.zeros(n)
+    status_colors: List[str] = []
+
+    # Load data from runs one by one and update your statistics
+    for i, folder in enumerate(folders):
+        infos, config, status = folder_to_info(folder)
+        freqs[i] = config["infer_freq_Hz"]
+        times[i] = config["frame_count"]/config["camera_fps"]
+        dists[i] = config["avg_true_dist"]
+        status_colors.append(map_status_to_color(status))
+
+    # Plot ground truth distances
+    fig, ax = plt.subplots()
+    fig.set_figwidth(14)
+    _plot_for_path(fig=fig, ax=ax, x=freqs, y=dists, c=status_colors)
+    ax.set_title(f"Path {path_version}")
+    ax.set_xlabel("SSD - Inference Frequency (Hz)")
+    ax.set_ylabel("Average Ground Truth Distance (m)")
+    fig.savefig(os.path.join(folder_path, dist_filename))
+    plt.close(fig)
+    
+    # Plot simulation time
+    fig, ax = plt.subplots()
+    fig.set_figwidth(14)
+    _plot_for_path(fig=fig, ax=ax, x=freqs, y=times, c=status_colors)
+    ax.set_title(f"Path {path_version}")
+    ax.set_xlabel("SSD - Inference Frequency (Hz)")
+    ax.set_ylabel("Simulation Time (s)")
+    fig.savefig(os.path.join(folder_path, time_filename))
+    plt.close(fig)

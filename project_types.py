@@ -11,6 +11,11 @@ Status_t = Literal["Error", "Running", "Time's up", "LeadingUAV lost", "EgoUAV a
 if EGO_UAV_NAME != "EgoUAV" or LEADING_UAV_NAME != "LeadingUAV":
     Warning("Noticed that you changed the names of the EgoUAV but forgot to update the Status_t type defined in project_types.py, or maybe just this if statement!")
 
+Filter_t = Literal["KF", "None"]
+Motion_model_t = Literal["CA", "CV"]
+Path_version_t = Literal["v0", "v1", "v2"]
+Movement_t = Literal["Random", "Path"]
+
 def _map_to_status_code(status: Status_t) -> int:
     """
     Maps the status to the appropriate integer code.
@@ -28,10 +33,6 @@ def _map_to_status_code(status: Status_t) -> int:
 
 def map_status_to_color(status: Status_t) -> str:
     return STATUS_COLORS[get_args(Status_t).index(status)]
-
-Filter_t = Literal["KF", "None"]
-Motion_model_t = Literal["CA", "CV"]
-Path_version_t = Literal["v0", "v1", "v2"]
 
 class Statistics_t(TypedDict):
     dist_mse: float

@@ -59,7 +59,7 @@ class Controller():
         self.filter = None
         # Configure the KF
         if filter_type == "KF":
-            X_init = np.zeros([9, 1]); X_init[0, 0] = 3.5; X_init[1, 0] = 0; X_init[2, 0] = -50
+            X_init = np.zeros([9, 1]); X_init[0, 0] = 3.5; X_init[1, 0] = 0; X_init[2, 0] = -1.5
             P_init = np.diag([0.01, 0.01, 0.01, 1, 1, 1, 1, 1, 1])
             self.filter = KalmanFilter(X_init=X_init,
                                        P_init=P_init,

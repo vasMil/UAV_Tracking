@@ -47,7 +47,8 @@ class Logger:
     def __init__(self,
                  egoUAV: EgoUAV,
                  leadingUAV: LeadingUAV,
-                 config: DefaultCoSimulatorConfig = DefaultCoSimulatorConfig()
+                 config: DefaultCoSimulatorConfig = DefaultCoSimulatorConfig(),
+                 folder: str = "recordings/"
             ) -> None:
         # Settings
         self.egoUAV = egoUAV
@@ -56,7 +57,7 @@ class Logger:
 
         # Folder and File namse
         dt = datetime.datetime.now()
-        self.parent_folder = f"recordings/path_v1/{dt.year}{dt.month:02d}{dt.day:02d}_{dt.hour:02d}{dt.minute:02d}{dt.second:02d}"
+        self.parent_folder = os.path.join(folder ,f"{dt.year}{dt.month:02d}{dt.day:02d}_{dt.hour:02d}{dt.minute:02d}{dt.second:02d}")
         self.images_path = f"{self.parent_folder}/images"
         self.logfile = f"{self.parent_folder}/log.pkl"
         self.setup_file = f"{self.parent_folder}/setup.txt"

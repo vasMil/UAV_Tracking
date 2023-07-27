@@ -6,7 +6,7 @@ import airsim
 import torch
 
 from constants import EGO_UAV_NAME, IMG_HEIGHT, IMG_WIDTH
-from project_types import Status_t, _map_to_status_code
+from project_types import Status_t, _map_to_status_code, Movement_t, Path_version_t
 from config import DefaultCoSimulatorConfig
 from models.LeadingUAV import LeadingUAV
 from models.EgoUAV import EgoUAV
@@ -15,7 +15,10 @@ from utils.simulation import getTestPath
 
 class CoSimulator():
     def __init__(self,
-                 config: DefaultCoSimulatorConfig = DefaultCoSimulatorConfig()
+                 config: DefaultCoSimulatorConfig = DefaultCoSimulatorConfig(),
+                 log_folder: str = "recordings/",
+                 movement: Movement_t = "Random",
+                 path_version: Optional[Path_version_t] = None
         ):
             if config.sim_fps < config.camera_fps:
                 raise Exception("sim_fps cannot be less than camera_fps")
@@ -28,8 +31,15 @@ class CoSimulator():
                 config.filter_freq_Hz = config.filter_freq_Hz
             else:
                 config.filter_freq_Hz = config.infer_freq_Hz
+            
             self.done: bool = False
             self.status: int = _map_to_status_code("Running")
+            
+            self.movement: Movement_t = movement
+            self.path_version: Optional[Path_version_t] = path_version
+            if movement == "Path" and path_version is None:
+                raise Exception("If movement is Path, path_version cannot be None!")
+            
             self.lost_lead_infer_frame_cnt = 0
 
             # Create a client to communicate with the UE
@@ -55,7 +65,8 @@ class CoSimulator():
             # Create a Logger
             self.logger = Logger(egoUAV=self.egoUAV,
                                  leadingUAV=self.leadingUAV,
-                                 config=config)
+                                 config=config,
+                                 folder=log_folder)
 
             # Define a variable that you may update inside hook_leadingUAV_move
             # with the expected path, so you may later add this path to the
@@ -139,9 +150,11 @@ class CoSimulator():
         )
 
     def hook_leadingUAV_move(self):
-        # self.leadingUAV.random_move(self.leadingUAV_update_vel_interval_s)
-        if self.frame_idx == 0:
-            self.leading_path = getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position, "v1")
+        if self.movement == "Random":
+            self.leadingUAV.random_move(self.config.leadingUAV_update_vel_interval_s)
+        elif self.movement == "Path" and self.path_version is not None:
+            if self.frame_idx != 0: return
+            self.leading_path = getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position, version=self.path_version)
             self.leadingUAV.moveOnPathAsync(self.leading_path)
 
     def hook_net_inference(self) -> bool:

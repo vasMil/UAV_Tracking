@@ -6,17 +6,27 @@ from models.CoSimulator import CoSimulator
 from utils.data import plot_for_path
 
 if __name__ == '__main__':
-    # plot_for_path("recordings/path_v0", "dist.png", "time.png", "v0")
-    # plot_for_path("recordings/path_v1", "dist.png", "time.png", "v1")
-    # plot_for_path("recordings/path_v2", "dist.png", "time.png", "v2")
-    num_tests = 3
-    for fi, f in enumerate(range(1,31)):
+    # plot_for_path("recordings/freq_tests/path_v0", "dist_5.png", "time_5.png", "v0", "uav_velocity", 5)
+    # plot_for_path("recordings/vel_tests/path_v0", "dist_30Hz.png", "time_30Hz.png", "v0", "infer_freq_Hz", 30)
+
+    # plot_for_path("recordings/freq_tests/path_v0_lessShadows", "dist_5.png", "time_5.png", "v0", "uav_velocity", 5)
+    # plot_for_path("recordings/vel_tests/path_v0_lessShadows", "dist_30Hz.png", "time_30Hz.png", "v0", "infer_freq_Hz", 30)
+
+    # plot_for_path("recordings/freq_tests/path_v1", "dist_5.png", "time_5.png", "v1", "uav_velocity", 5)
+    # plot_for_path("recordings/vel_tests/path_v1", "dist_30Hz.png", "time_30Hz.png", "v1", "infer_freq_Hz", 30)
+
+    # plot_for_path("recordings/freq_tests/path_v2", "dist_5.png", "time_5.png", "v2", "uav_velocity", 5)
+    # plot_for_path("recordings/vel_tests/path_v2", "dist_30Hz.png", "time_30Hz.png", "v2", "infer_freq_Hz", 65)
+    num_tests = 1
+    best_freq = 30
+    for v in range(5, 11):
         for i in range(num_tests):
-            config = DefaultCoSimulatorConfig(sim_fps=f,
-                                              camera_fps=f,
-                                              infer_freq_Hz=f,
-                                              filter_freq_Hz=f)
-            co_sim = CoSimulator(config=config, log_folder="recordings/path_v1/", movement="Path", path_version="v1")
+            config = DefaultCoSimulatorConfig(sim_fps=best_freq,
+                                              camera_fps=best_freq,
+                                              infer_freq_Hz=best_freq,
+                                              filter_freq_Hz=best_freq,
+                                              uav_velocity=v)
+            co_sim = CoSimulator(config=config, log_folder="recordings/vel_tests/path_v1/", movement="Path", path_version="v1")
             try:
                 co_sim.start()
                 while not co_sim.done and co_sim.status == 0:

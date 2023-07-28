@@ -1,4 +1,4 @@
-from typing import List, Tuple, Any, get_args
+from typing import List, Tuple, Any, get_args, Literal, Union
 import os
 import json
 
@@ -111,39 +111,54 @@ def _plot_for_path(fig: Any, ax: plt.Axes, x: np.ndarray, y: np.ndarray, c: List
 def plot_for_path(folder_path: str,
                   dist_filename: str,
                   time_filename: str,
-                  path_version: Path_version_t
+                  path_version: Path_version_t,
+                  constant_key: Literal["uav_velocity", "infer_freq_Hz"],
+                  constant_value: Union[int, float]
     ) -> None:
     folders = get_folders_in_path(folder_path)
     n = len(folders)
-    freqs = np.zeros(n)
+    x = np.zeros(n)
     dists = np.zeros(n)
     times = np.zeros(n)
     status_colors: List[str] = []
+    if constant_key == "uav_velocity":
+        x_key = "infer_freq_Hz"
+        x_label = "Inference Frequency (Hz)"
+    else:
+        x_key = "uav_velocity"
+        x_label = "UAV Velocity (m/s)"
 
     # Load data from runs one by one and update your statistics
-    for i, folder in enumerate(folders):
+    i = 0
+    for folder in folders:
         infos, config, status = folder_to_info(folder)
-        freqs[i] = config["infer_freq_Hz"]
+        if config[constant_key] != constant_value:
+            continue
+        x[i] = config[x_key]
         times[i] = config["frame_count"]/config["camera_fps"]
         dists[i] = config["avg_true_dist"]
         status_colors.append(map_status_to_color(status))
+        i += 1
+    x = x[0:i]
+    times = times[0:i]
+    dists = dists[0:i]
 
     # Plot ground truth distances
     fig, ax = plt.subplots()
     fig.set_figwidth(14)
-    _plot_for_path(fig=fig, ax=ax, x=freqs, y=dists, c=status_colors)
+    _plot_for_path(fig=fig, ax=ax, x=x, y=dists, c=status_colors)
     ax.set_title(f"Path {path_version}")
-    ax.set_xlabel("SSD - Inference Frequency (Hz)")
+    ax.set_xlabel(f"SSD - {x_label}")
     ax.set_ylabel("Average Ground Truth Distance (m)")
     fig.savefig(os.path.join(folder_path, dist_filename))
     plt.close(fig)
-    
+
     # Plot simulation time
     fig, ax = plt.subplots()
     fig.set_figwidth(14)
-    _plot_for_path(fig=fig, ax=ax, x=freqs, y=times, c=status_colors)
+    _plot_for_path(fig=fig, ax=ax, x=x, y=times, c=status_colors)
     ax.set_title(f"Path {path_version}")
-    ax.set_xlabel("SSD - Inference Frequency (Hz)")
+    ax.set_xlabel(f"SSD - {x_label}")
     ax.set_ylabel("Simulation Time (s)")
     fig.savefig(os.path.join(folder_path, time_filename))
     plt.close(fig)

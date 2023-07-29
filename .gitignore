@@ -7,3 +7,4 @@ log/
 focal_length.png
 .venv/
 recordings/
+tests/

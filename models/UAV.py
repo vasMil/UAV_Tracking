@@ -1,4 +1,4 @@
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 import math
 
 import airsim
@@ -150,6 +150,42 @@ class UAV():
 
     def simGetCollisionInfo(self) -> airsim.CollisionInfo:
         return self.client.simGetCollisionInfo(vehicle_name=self.name)
+
+    def simSetDetectionFilterRadius(self,
+                                    camera_name: str = "0",
+                                    image_type: airsim.ImageType = airsim.ImageType.Scene, # type: ignore
+                                    radius_cm: float = 10. * 100.
+                                    ) -> None:
+        self.client.simSetDetectionFilterRadius(camera_name=camera_name,
+                                                image_type=image_type,
+                                                radius_cm=radius_cm,
+                                                vehicle_name=self.name)
+
+    def simAddDetectionFilterMeshName(self,
+                                      mesh_name: str,
+                                      camera_name: str = "0",
+                                      image_type: airsim.ImageType = airsim.ImageType.Scene, # type: ignore
+                                      ) -> None:
+        self.client.simAddDetectionFilterMeshName(camera_name=camera_name,
+                                                  image_type=image_type,
+                                                  mesh_name=mesh_name,
+                                                  vehicle_name=self.name) 
+
+    def simClearDetectionMeshNames(self,
+                                   camera_name: str,
+                                   image_type: airsim.ImageType = airsim.ImageType.Scene, # type: ignore
+        ) -> None:
+        self.client.simClearDetectionMeshNames(camera_name=camera_name,
+                                               image_type=image_type,
+                                               vehicle_name=self.name)
+
+    def simGetDetections(self,
+                         camera_name: str = "0",
+                         image_type: airsim.ImageType = airsim.ImageType.Scene # type: ignore
+        ) -> List[airsim.DetectionInfo]:
+        return self.client.simGetDetections(camera_name=camera_name,
+                                            image_type=image_type,
+                                            vehicle_name=self.name)
 
     def simTestLineOfSightToPoint(self, geo_point: airsim.GeoPoint):
             return self.client.simTestLineOfSightToPoint(geo_point, vehicle_name=self.name)

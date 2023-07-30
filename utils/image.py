@@ -2,24 +2,27 @@ from typing import Tuple
 
 import torch
 import torchvision.transforms.functional as F
-from PIL import ImageFont, ImageDraw
+import torchvision.transforms as transforms
+from PIL import ImageFont, ImageDraw, Image
 import numpy as np
 
 from constants import IMG_HEIGHT, IMG_WIDTH
 from models.BoundingBox import BoundingBox
 from models.FrameInfo import FrameInfo
 
-def add_bbox_to_image(image: torch.Tensor, bbox: BoundingBox) -> torch.Tensor:
+def add_bbox_to_image(image: torch.Tensor, bbox: BoundingBox,
+                      color: Tuple[float, float, float] = (1., 0., 0.)
+    ) -> torch.Tensor:
     image = image.clone()
-    x1 = max(round(bbox.x1), 0)
-    x2 = min(round(bbox.x2), IMG_WIDTH-1)
-    y1 = max(round(bbox.y1), 0)
-    y2 = min(round(bbox.y2), IMG_HEIGHT-1)
-    for i, color in enumerate([1, 0, 0]):
-        image[i, y1, x1:x2] = color
-        image[i, y2, x1:x2] = color
-        image[i, y1:y2, x1] = color
-        image[i, y1:y2, x2] = color
+    x1 = max(round(bbox.x1)-1, 0)
+    x2 = min(round(bbox.x2)+1, IMG_WIDTH-1)
+    y1 = max(round(bbox.y1)-1, 0)
+    y2 = min(round(bbox.y2)+1, IMG_HEIGHT-1)
+    for i, c in enumerate(color):
+        image[i, y1, x1:(x2+1)] = c
+        image[i, y2, x1:(x2+1)] = c
+        image[i, y1:(y2+1), x1] = c
+        image[i, y1:(y2+1), x2] = c
     return image
 
 def add_info_to_image(image: torch.Tensor,
@@ -105,3 +108,8 @@ def increase_resolution(image: torch.Tensor, increase_factor: int = 2) -> torch.
     # thus unsqueezing the spread_matrix works.
     spread_matrix = torch.ones(increase_factor, increase_factor)
     return torch.kron(image, spread_matrix)
+
+def load_png_as_tensor(png_file_path):
+    image = Image.open(png_file_path)
+    tensor_image = transforms.ToTensor()(image) 
+    return tensor_image

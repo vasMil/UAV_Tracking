@@ -4,8 +4,9 @@ import time
 
 import airsim
 import torch
+import numpy as np
 
-from constants import EGO_UAV_NAME, IMG_HEIGHT, IMG_WIDTH
+from constants import EGO_UAV_NAME, IMG_HEIGHT, IMG_WIDTH, CLOCK_SPEED
 from project_types import Status_t, _map_to_status_code, Movement_t, Path_version_t
 from config import DefaultCoSimulatorConfig
 from models.LeadingUAV import LeadingUAV
@@ -18,7 +19,8 @@ class CoSimulator():
                  config: DefaultCoSimulatorConfig = DefaultCoSimulatorConfig(),
                  log_folder: str = "recordings/",
                  movement: Movement_t = "Random",
-                 path_version: Optional[Path_version_t] = None
+                 path_version: Optional[Path_version_t] = None,
+                 display_terminal_progress: bool = True
         ):
             if config.sim_fps < config.camera_fps:
                 raise Exception("sim_fps cannot be less than camera_fps")
@@ -34,6 +36,7 @@ class CoSimulator():
             
             self.done: bool = False
             self.status: int = _map_to_status_code("Running")
+            self.time_ns = 0
             
             self.movement: Movement_t = movement
             self.path_version: Optional[Path_version_t] = path_version
@@ -49,6 +52,7 @@ class CoSimulator():
             # Reset the position of the UAVs (just to make sure)
             self.client.reset()
             self.client.simPause(False)
+            time.sleep(1)
             # Wait for the takeoff to complete
             self.leadingUAV = LeadingUAV(name="LeadingUAV",
                                          vel_magn=config.uav_velocity,
@@ -61,12 +65,20 @@ class CoSimulator():
                                  filter_type=config.filter_type)
             self.egoUAV.lastAction.join()
             self.leadingUAV.lastAction.join()
+            
+            # Check for any early collisions that will cause the simulation to
+            # exit immediately after starting stating (falsly) that the EgoUAV
+            # has collided
+            if self.egoUAV.simGetCollisionInfo().has_collided or\
+               self.leadingUAV.simGetCollisionInfo().has_collided:
+                raise Exception("Detected Collision before even starting to run the simulation. Probably a reset caused this!")
 
             # Create a Logger
             self.logger = Logger(egoUAV=self.egoUAV,
                                  leadingUAV=self.leadingUAV,
                                  config=config,
-                                 folder=log_folder)
+                                 folder=log_folder,
+                                 display_terminal_progress=display_terminal_progress)
 
             # Define a variable that you may update inside hook_leadingUAV_move
             # with the expected path, so you may later add this path to the
@@ -82,19 +94,19 @@ class CoSimulator():
         self.score, self.prev_score = None, None
         self.orient, self.prev_orient = self.egoUAV.getPitchRollYaw(), self.egoUAV.getPitchRollYaw()
 
-        # # Move up so you minimize shadows
-        # self.leadingUAV.moveByVelocityAsync(0, 0, -5, 10)
-        # self.egoUAV.moveByVelocityAsync(0, 0, -5, 10)
-        # self.egoUAV.lastAction.join()
-        # self.leadingUAV.lastAction.join()
-        # # Wait for the vehicles to stabilize
-        # time.sleep(20)
+        # Move up so you minimize shadows
+        self.leadingUAV.moveByVelocityAsync(0, 0, -5, 10)
+        self.egoUAV.moveByVelocityAsync(0, 0, -5, 10)
+        self.egoUAV.lastAction.join()
+        self.leadingUAV.lastAction.join()
+        # Wait for the vehicles to stabilize
+        time.sleep(20/CLOCK_SPEED)
 
         # Pause the simulation
         self.client.simPause(True)
 
     def advance(self):
-        # print(f"\nFRAME: {self.frame_idx}")
+        t0 = time.time_ns()
 
         if self.frame_idx % (self.config.sim_fps/self.config.camera_fps) == 0:
             self.hook_camera_frame_capture()
@@ -117,23 +129,30 @@ class CoSimulator():
         # Continue the simulation for a few seconds to match
         # the desired sim_fps
         self.frame_idx += 1
-        self.client.simContinueForTime(1/self.config.sim_fps)
+        self.client.simContinueForTime((1/self.config.sim_fps)/CLOCK_SPEED)
         
+        self.time_ns += time.time_ns() - t0
+
         # Check if simulation time limit has been reached.
         if self.frame_idx == self.config.simulation_time_s*self.config.sim_fps:
             self.finalize("Time's up")
         # Check if we lost the LeadingUAV
-        elif self.lost_lead_infer_frame_cnt == (self.config.infer_freq_Hz*self.config.max_time_lead_is_lost_s):
+        elif self.lost_lead_infer_frame_cnt == (self.config.infer_freq_Hz*self.config.max_time_lead_is_lost_s) or\
+             np.linalg.norm((
+                    self.leadingUAV.simGetObjectPose().position - 
+                    self.egoUAV.simGetObjectPose().position).to_numpy_array()
+                ) >= 20:
             print(f"The LeadingUAV was lost for {self.config.max_time_lead_is_lost_s} seconds!")
             self.finalize("LeadingUAV lost")
         # Check for collisions
         elif self.leadingUAV.simGetCollisionInfo().object_name == EGO_UAV_NAME:
             print(f"Collision between the two UAVs detected!")
             self.finalize("EgoUAV and LeadingUAV collision")
-        elif self.leadingUAV.simGetCollisionInfo().has_collided or self.egoUAV.simGetCollisionInfo().has_collided:
+        elif self.leadingUAV.simGetCollisionInfo().has_collided or \
+             self.egoUAV.simGetCollisionInfo().has_collided:
             uav_collided_name = self.leadingUAV.name if self.leadingUAV.simGetCollisionInfo().has_collided else self.egoUAV.name
             status: Status_t = "LeadingUAV collision" if self.leadingUAV.simGetCollisionInfo().has_collided else "EgoUAV collision"
-            print(f"The {uav_collided_name} crashed!")
+            print(f"The {uav_collided_name} crashed! At frame {self.frame_idx}")
             self.finalize(status)
 
     def hook_camera_frame_capture(self):
@@ -229,6 +248,7 @@ class CoSimulator():
         
         # Output some statistics
         print(f"Simulation run for {self.frame_idx/self.config.sim_fps} seconds")
+        print(f"Execution time: {self.time_ns*1e-9} seconds")
         self.exit(status)
 
     def exit(self, status: Status_t):

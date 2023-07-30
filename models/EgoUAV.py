@@ -26,7 +26,7 @@ from models.FrameInfo import EstimatedFrameInfo
 class EgoUAV(UAV):
     def __init__(self,
                  name: str = EGO_UAV_NAME,
-                 inference_freq_Hz: int = 0,
+                 inference_freq_Hz: int = 1,
                  vel_magn: float = 0,
                  filter_type: Filter_t = "KF",
                  motion_model: Motion_model_t = "CA",
@@ -50,7 +50,10 @@ class EgoUAV(UAV):
                                      motion_model=motion_model,
                                      use_pepper_filter=use_pepper_filter)
 
-    def _getImage(self, view_mode: bool = False) -> torch.Tensor:
+    def _getImage(self,
+                  view_mode: bool = False,
+                  img_type: airsim.ImageType = airsim.ImageType.Scene # type: ignore
+        ) -> torch.Tensor:
         """
         Returns an RGB image as a tensor, of the EgoUAV.
 
@@ -63,7 +66,7 @@ class EgoUAV(UAV):
         # since the request is only for a single image,
         # I may extract only the first element of the list
         resp = self.client.simGetImages(
-                [airsim.ImageRequest(0, airsim.ImageType.Scene, False, False)],
+                [airsim.ImageRequest(0, img_type, False, False)],
                 vehicle_name=self.name
             )[0]
         # Convert the string to a 1D numpy array (dtype = uint8)

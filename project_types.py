@@ -1,5 +1,7 @@
 from typing import Literal, Tuple, TypedDict, Optional, get_args
 
+import torch
+
 from constants import EGO_UAV_NAME, LEADING_UAV_NAME, STATUS_COLORS
 
 # Define a Status_t (type) so you may use a str to define the status when the coSimulator exits
@@ -60,3 +62,21 @@ class ExtendedCoSimulatorConfig_t(TypedDict):
     dist_mse: float
     lead_vel_mse: Optional[float]
     avg_true_dist: float
+
+class Bbox_dict_t(TypedDict):
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    label: int
+    img_name: Optional[str]
+    img_height: Optional[int]
+    img_width: Optional[int]
+
+class Bbox_dict_for_nn_t(TypedDict):
+    boxes: torch.Tensor
+    labels: torch.LongTensor
+
+class BoundBoxDataset_Item(TypedDict):
+    image: torch.Tensor
+    bounding_box: Bbox_dict_for_nn_t

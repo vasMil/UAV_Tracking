@@ -48,7 +48,8 @@ class Logger:
                  egoUAV: EgoUAV,
                  leadingUAV: LeadingUAV,
                  config: DefaultCoSimulatorConfig = DefaultCoSimulatorConfig(),
-                 folder: str = "recordings/"
+                 folder: str = "recordings/",
+                 display_terminal_progress: bool = True
             ) -> None:
         # Settings
         self.egoUAV = egoUAV
@@ -79,13 +80,15 @@ class Logger:
         # Counter that will provide us with info on how many frames the LeadingUAV
         # has been lost.
         self.lost_for_frames = 0
-        self.tprog = TerminalProgress(names=["Progress", "Distance", "LeadingUAV Lost For"],
-                                      limits=[config.simulation_time_s*config.camera_fps,
-                                              20,
-                                              config.max_time_lead_is_lost_s*config.camera_fps],
-                                      green_area_func=[lambda p: p > config.simulation_time_s*config.camera_fps*0.9, 
-                                                       lambda d: d < 3.5,
-                                                       lambda l: l < config.max_time_lead_is_lost_s*config.camera_fps*0.5])
+        self.tprog = None
+        if display_terminal_progress:
+            self.tprog = TerminalProgress(names=["Progress", "Distance", "LeadingUAV Lost For"],
+                                        limits=[config.simulation_time_s*config.camera_fps,
+                                                20,
+                                                config.max_time_lead_is_lost_s*config.camera_fps],
+                                        green_area_func=[lambda p: p > config.simulation_time_s*config.camera_fps*0.9, 
+                                                        lambda d: d < 3.5,
+                                                        lambda l: l < config.max_time_lead_is_lost_s*config.camera_fps*0.5])
 
     def create_frame(self, frame: torch.Tensor, is_bbox_frame: bool):
         """
@@ -187,8 +190,9 @@ class Logger:
         
         # Update the progress bars displayed on the terminal
         ego_pos = np.array(frame_info["sim_ego_pos"])
-        lead_pos = np.array(frame_info["sim_lead_pos"])        
-        self.tprog.update([g_frame_idx, np.linalg.norm((ego_pos - lead_pos)).item(), self.lost_for_frames])
+        lead_pos = np.array(frame_info["sim_lead_pos"])
+        if self.tprog:
+            self.tprog.update([g_frame_idx, np.linalg.norm((ego_pos - lead_pos)).item(), self.lost_for_frames])
 
     def draw_frame(self,
                    frame: torch.Tensor,
@@ -414,7 +418,7 @@ class Logger:
         # Write the mp4 file
         print("\nWriting the video...")
         self.save_frames(finalize=True)
-        # self.write_video()
+        self.write_video()
 
         # Write a setup.txt file containing all the important configuration options used for
         # this run

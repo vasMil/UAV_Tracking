@@ -16,6 +16,9 @@ LEADING_UAV_SEED: Optional[int] = 10
 # Minimum acceptable error
 EPS = 1e-5
 
+# The clock speed as defined in settings.json
+CLOCK_SPEED = 3
+
 # Pawn size
 PAWN_SIZE_X = 0.98
 PAWN_SIZE_Y = 0.98
@@ -65,7 +68,7 @@ RAND_MOVE_BOX_Z: Tuple[float, float] = (-10., -1.,) # Min dist from the ground i
 # If you want to minimize this allowed threshold you will have to
 # increase wait_stationarity.
 MEASUREMENT_THREASHOLD = (0.1, 0.1, 0.1)
-FILENAME_LEADING_ZEROS = 4
+FILENAME_LEADING_ZEROS = 6
 
 #########################################################################################
 ########################################## GRAPHS #######################################

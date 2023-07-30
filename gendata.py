@@ -7,12 +7,11 @@ import math
 import airsim
 import torch
 from torchvision.utils import save_image
-import pandas as pd
 import json
 import numpy as np
 
 from constants import RAND_MOVE_BOX_X, RAND_MOVE_BOX_Y, RAND_MOVE_BOX_Z,\
-    LEADING_UAV_SEED, FILENAME_LEADING_ZEROS, LEADING_UAV_NAME
+    FILENAME_LEADING_ZEROS, LEADING_UAV_NAME
 from project_types import Bbox_dict_t
 from models.EgoUAV import EgoUAV
 from models.LeadingUAV import LeadingUAV
@@ -76,121 +75,6 @@ def create_sample(
 
             # Return the sample
             return (img, global_offset)
-
-def getLastImageIdx(csv_df: pd.DataFrame) -> int:
-    if csv_df.empty:
-        return -1
-    img_name = str(csv_df.iloc[-1, 0])
-    return int(img_name.split(sep=".")[0])
-
-def generate_training_data(
-        csv_file: str,
-        root_dir: str,
-        num_samples: int = 10
-    ) -> None:
-
-    """
-    It generates images of the egoUAV's perspective, with the leadingUAV in them.
-    The leadingUAV may have different poses (random).
-    It saves those images into the specified folder (root_dir) and appends to a csv file
-    the name of the image and the "ground truth" offset of the leadingUAV from the egoUAV.
-
-    The csv should exist and have the first row as:
-    filename, x_offset, y_offset, z_offset
-
-    In order for this function to work you have to set
-    `"PhysicsEngineName":"ExternalPhysicsEngine"`
-    in the settings file.
-    """
-    # Create a client to communicate with the UE
-    client = airsim.MultirotorClient()
-    client.confirmConnection()
-
-    # Create the vehicles and perform the takeoff
-    leadingUAV = LeadingUAV("LeadingUAV", seed=LEADING_UAV_SEED, genmode=True)
-    egoUAV = EgoUAV("EgoUAV", genmode=True)
-
-    # Calculate the distance between the two UAVs
-    init_lead_ego_dist = client.simGetObjectPose(object_name="LeadingUAV").position - client.simGetObjectPose(object_name="EgoUAV").position
-    # Both UAVs takeoff and do nothing else, thus the distance on the z axis is only error
-    init_lead_ego_dist.z_val = 0
-
-    # Load the csv file into a DataFrame
-    csv_df = pd.read_csv(csv_file)
-
-    # Get the index of the last saved img in the dataset and increment it by one
-    # to get the index of the sample image you will produce.
-    sample_idx = getLastImageIdx(csv_df) + 1
-    for s in range(num_samples):
-        img, offset = create_sample(egoUAV, leadingUAV)
-        # Save the image
-        img_filename = str(sample_idx + s).zfill(FILENAME_LEADING_ZEROS) + ".png"
-        save_image(img, os.path.join(root_dir, img_filename))
-        # Update the df
-        new_row_df = pd.DataFrame([[img_filename, *offset]], columns=csv_df.columns)
-        csv_df = pd.concat([csv_df, new_row_df], ignore_index=True)
-        csv_df.to_csv(csv_file, index=False)
-
-    # Reset the location of all Multirotors
-    client.reset()
-    # Do not forget to disable all Multirotors
-    leadingUAV.disable()
-    egoUAV.disable()
-
-def generate_frames_and_bboxes(num_samples: int,
-                               frames_root_path: str,
-                               json_path: str
-    ) -> None:
-    """
-    Utilizing the filter mesh functionality AirSim provides, we may get a
-    bbox around the LeadingUAV automatically.
-
-    Will also create a subfolder to the frames_root_path containing the same
-    frame with the corresponding bbox painted on it.
-
-    Args:
-    - num_samples: Number of frames, with their corresponding bboxes to be created.
-    - frames_root_path: The folder at which to save the frames.
-    - json_path: The path at which to save a json file containing all the bboxes.
-    """
-    leadingUAV = LeadingUAV(genmode=True)
-    egoUAV = EgoUAV(genmode=True)
-    egoUAV.simSetDetectionFilterRadius(radius_cm=10. * 100.)
-    egoUAV.simAddDetectionFilterMeshName(mesh_name=LEADING_UAV_NAME)
-    bboxes: List[Bbox_dict_t] = []
-
-    subfolder_path = os.path.join(frames_root_path, "painted")
-    if not os.path.exists(subfolder_path):
-        os.mkdir(subfolder_path)
-
-    cnt: int = 0
-    while cnt < num_samples:
-        img_name = str(cnt).zfill(FILENAME_LEADING_ZEROS) + ".png"
-        frame, _ = create_sample(egoUAV, leadingUAV)
-        detections = egoUAV.simGetDetections()
-        if len(detections) != 1:
-            continue
-        detection = detections[0]
-        bbox = BoundingBox(x1=detection.box2D.min.x_val,
-                           y1=detection.box2D.min.y_val,
-                           x2=detection.box2D.max.x_val,
-                           y2=detection.box2D.max.y_val,
-                           label=1,
-                           img_name=img_name,
-                           img_height=frame.shape[1],
-                           img_width=frame.shape[2])
-        if bbox.width < 2 or bbox.height < 2:
-            continue
-        bboxes.append(bbox.__dict__())
-        save_image(frame, os.path.join(frames_root_path, img_name))
-        save_image(add_bbox_to_image(frame, bbox), os.path.join(subfolder_path, img_name))
-        cnt += 1
-
-    leadingUAV.disable()
-    egoUAV.disable()
-    egoUAV.client.reset()
-    with open(json_path, 'w') as f:
-        json.dump(fp=f, obj=bboxes)
 
 def clean_generated_frames_and_bboxes(frames_root_path: str,
                                       json_path: str,

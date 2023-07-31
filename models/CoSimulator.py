@@ -6,7 +6,7 @@ import airsim
 import torch
 import numpy as np
 
-from constants import EGO_UAV_NAME, IMG_HEIGHT, IMG_WIDTH, CLOCK_SPEED
+from constants import EGO_UAV_NAME, LEADING_UAV_NAME, IMG_HEIGHT, IMG_WIDTH, CLOCK_SPEED
 from project_types import Status_t, _map_to_status_code, Movement_t, Path_version_t
 from config import DefaultCoSimulatorConfig
 from models.LeadingUAV import LeadingUAV
@@ -54,7 +54,7 @@ class CoSimulator():
             self.client.simPause(False)
             time.sleep(1)
             # Wait for the takeoff to complete
-            self.leadingUAV = LeadingUAV(name="LeadingUAV",
+            self.leadingUAV = LeadingUAV(name=LEADING_UAV_NAME,
                                          vel_magn=config.uav_velocity,
                                          max_vel=config.max_vel,
                                          min_vel=config.min_vel)
@@ -141,7 +141,7 @@ class CoSimulator():
              np.linalg.norm((
                     self.leadingUAV.simGetObjectPose().position - 
                     self.egoUAV.simGetObjectPose().position).to_numpy_array()
-                ) >= 20:
+                ) >= self.config.max_allowed_uav_distance_m:
             print(f"The LeadingUAV was lost for {self.config.max_time_lead_is_lost_s} seconds!")
             self.finalize("LeadingUAV lost")
         # Check for collisions

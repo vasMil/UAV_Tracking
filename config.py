@@ -35,7 +35,7 @@ class DefaultTrainingConfig():
 class DefaultCoSimulatorConfig():
     def __init__(self,
                  uav_velocity: float = 5.,
-                 score_threshold: float = 0.1,
+                 score_threshold: float = 0.,
                  max_vel: Tuple[float, float, float] = (5., 5., 5.),
                  min_vel: Tuple[float, float, float] = (1., -5., -5.),
                  weight_vel: Tuple[float, float, float] = (1., 1., 4.),
@@ -47,8 +47,9 @@ class DefaultCoSimulatorConfig():
                  filter_type: Filter_t = "KF",
                  motion_model: Motion_model_t = "CA",
                  use_pepper_filter: bool = True,
-                 leadingUAV_update_vel_interval_s: int = 2,
+                 leadingUAV_update_vel_interval_s: int = 4,
                  max_time_lead_is_lost_s: int = 2,
+                 max_allowed_uav_distance_m: int = 15
             ) -> None:
         # The magnitude of the velocity vector (in 3D space)
         self.uav_velocity = uav_velocity
@@ -85,6 +86,7 @@ class DefaultCoSimulatorConfig():
         self.use_pepper_filter = use_pepper_filter
         self.leadingUAV_update_vel_interval_s = leadingUAV_update_vel_interval_s
         self.max_time_lead_is_lost_s = max_time_lead_is_lost_s
+        self.max_allowed_uav_distance_m = max_allowed_uav_distance_m
 
         # The simulation fps should be a common multiple
         # of all actions that need to be performed at a specific frequency

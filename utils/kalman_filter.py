@@ -95,7 +95,7 @@ def estimate_measurement_noise(network: DetectionNetBench, num_samples: int = 10
         # Have the EgoUAV at a height, so no shadows can be detected.
         img, _ = create_sample(egoUAV, leadingUAV, ego_box_lims_x=(-50, -60))
         # Evaluate the image returned
-        bbox, _ = network.eval(img)
+        bbox, _ = network.eval(img, threshold=0.)
         if not bbox:
             # The image did not contain the LeadingUAV, restart the process.
             continue

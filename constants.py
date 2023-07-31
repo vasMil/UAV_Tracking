@@ -17,7 +17,7 @@ LEADING_UAV_SEED: Optional[int] = 10
 EPS = 1e-5
 
 # The clock speed as defined in settings.json
-CLOCK_SPEED = 3
+CLOCK_SPEED = 1
 
 # Pawn size
 PAWN_SIZE_X = 0.98

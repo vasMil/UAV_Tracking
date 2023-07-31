@@ -84,7 +84,7 @@ class Logger:
         if display_terminal_progress:
             self.tprog = TerminalProgress(names=["Progress", "Distance", "LeadingUAV Lost For"],
                                         limits=[config.simulation_time_s*config.camera_fps,
-                                                20,
+                                                config.max_allowed_uav_distance_m,
                                                 config.max_time_lead_is_lost_s*config.camera_fps],
                                         green_area_func=[lambda p: p > config.simulation_time_s*config.camera_fps*0.9, 
                                                         lambda d: d < 3.5,

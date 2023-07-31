@@ -42,7 +42,7 @@ class EgoUAV(UAV):
         # self.net = Detection_FasterRCNN()
         # self.net.load("nets/checkpoints/rcnn100.checkpoint")
         self.net = Detection_SSD()
-        self.net.load("nets/checkpoints/ssd300.checkpoint")
+        # self.net.load("nets/checkpoints/ssd300.checkpoint")
         self.controller = Controller(vel_magn=vel_magn,
                                      dt=(1/inference_freq_Hz),
                                      weight_vel=weight_vel,

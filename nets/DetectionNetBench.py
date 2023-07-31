@@ -14,7 +14,8 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 from config import DefaultTrainingConfig
-from models.BoundingBox import BoundingBoxDataset, BoundBoxDataset_Item, BoundingBox
+from models.BoundingBox import BoundingBoxDataset, BoundingBox
+from project_types import BoundBoxDataset_Item, Bbox_dict_for_nn_t
 
 class Losses_dict_t(TypedDict):
     train: List[float]
@@ -63,8 +64,9 @@ class DetectionNetBench():
                  model: nn.Module,
                  model_id: str,
                  config: DefaultTrainingConfig = DefaultTrainingConfig(),
-                 root_train_dir: str = "", json_train_labels: str = "",
-                 root_test_dir: str = "", json_test_labels: str = ""
+                 root_train_dir: Optional[str] = None, json_train_labels: Optional[str] = None,
+                 root_test_dir: Optional[str] = None, json_test_labels: Optional[str] = None,
+                 checkpoint_path: Optional[str] = None
             ) -> None:
         """
         Initializes the DetectionNetBench.
@@ -177,7 +179,10 @@ class DetectionNetBench():
                 with_stack=True,
                 profile_memory=True
             )
-        
+
+        if checkpoint_path:
+            self.load(checkpoint_path)
+
     def load(self, checkpoint_path: str) -> None:
         """
         Given a checkpoint_path, loads the checkpoint dictionary
@@ -259,7 +264,7 @@ class DetectionNetBench():
             target.append(temp_dict)
         return images, target
 
-    def _show_bounding_boxes_batch(self, images_batch: torch.Tensor, target_batch: list[Dict[str, torch.Tensor]]):
+    def _show_bounding_boxes_batch(self, images_batch: torch.Tensor, target_batch: List[Bbox_dict_for_nn_t]):
         """Show image with landmarks for a batch of samples."""
         batch_size = len(images_batch)
         fig = plt.figure(figsize=(8,8))
@@ -305,8 +310,8 @@ class DetectionNetBench():
         # Organize the datasets and the dataloaders for training and testing
         datasets = {
             x: BoundingBoxDataset(
-                root_dir=self.root_dirs[x],
-                json_file=self.json_labels[x]
+                root_dir=self.root_dirs[x], # type: ignore
+                json_file=self.json_labels[x] # type: ignore
             ) for x in ["train", "val"]
         }
         dataloaders = {
@@ -478,7 +483,7 @@ class DetectionNetBench():
                         )
         
         if visualize:
-            bbox_dict = bbox.to_dict()
+            bbox_dict = bbox.to_nn_dict()
             bbox_dict["boxes"] = bbox_dict["boxes"].unsqueeze(0).unsqueeze(0)
             self._show_bounding_boxes_batch(image.unsqueeze(0), [bbox_dict])
 
@@ -503,8 +508,8 @@ class DetectionNetBench():
                              have not been specified")
         
         dataset = BoundingBoxDataset(
-                    root_dir=self.root_dirs["val"], 
-                    json_file=self.json_labels["val"]
+                    root_dir=self.root_dirs["val"], # type: ignore
+                    json_file=self.json_labels["val"] # type: ignore
                   )
         dataloader = DataLoader(
                         dataset, batch_size=batch_size, shuffle=True,
@@ -555,7 +560,7 @@ class DetectionNetBench():
                              have not been specified")
         
         # Create a dataloader to use in order to fetch images
-        dataset = BoundingBoxDataset(self.root_dirs["val"], self.json_labels["val"])
+        dataset = BoundingBoxDataset(self.root_dirs["val"], self.json_labels["val"]) # type: ignore
         dataloader = DataLoader(dataset=dataset, shuffle=True,
                                 collate_fn=self._collate_fn)
 
@@ -597,9 +602,10 @@ class DetectionNetBench():
         print(f"self.eval() operates on average at: {num_tests/(end-start)} Hz")
 
     def plot_losses(self) -> None:
-        _, ax = plt.subplots()
+        fig, ax = plt.subplots()
         ax.set_title(f"Losses for model: {self.model_id}")
         for phase in ["train", "val"]:
             ax.plot(range(self.epoch), self.losses[phase], label=phase)
         ax.legend()
-        plt.show()
+        fig.savefig("ssd_losses.png")
+        plt.close(fig)

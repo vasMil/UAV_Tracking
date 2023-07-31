@@ -18,8 +18,8 @@ class BoundingBox():
         self.x2 = x2
         self.y1 = y1
         self.y2 = y2
-        self.width = abs(x2 - x1)
-        self.height = abs(y2 - y1)
+        self.width = x2 - x1
+        self.height = y2 - y1
         self.label = label
         self.score = score
         self.img_name = img_name
@@ -27,6 +27,16 @@ class BoundingBox():
         self.img_width = img_width
         self.x_center = x2 - x1
         self.y_center = y2 - y1
+        if y1 < 0 or x1 < 0:
+            raise Exception(f"A BoundingBox can not have negative coordinates!")
+        if img_height and y2 >= img_height:
+            raise Exception(f"Cannot instantiate a BoundingBox that exceeds the img_height!")
+        if img_width and x2 >= img_width:
+            raise Exception(f"Cannot instantiate a BoundingBox that exceeds the img_width!")
+        if self.width <= 0:
+            raise Exception(f"Bounding box should have a width > 0!")
+        if self.height <= 0:
+            raise Exception(f"Bounding box should have a height > 0!")
 
     def __str__(self) -> str:
         return f"BoundingBox: \

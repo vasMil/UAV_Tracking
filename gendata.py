@@ -220,7 +220,9 @@ def generate_data_using_segmentation(num_samples: int,
                     x.append(w)
                     y.append(h)
         
-        if len(x) < 8:
+        if len(x) < 8 or min(x)<0 or min(y)<0 or\
+             max(x)>frame.shape[2] or max(y)>frame.shape[1] or\
+                max(x)-min(x) <= 0 or max(y)-min(y) <= 0:
             continue
 
         bbox = BoundingBox(x1=min(x),

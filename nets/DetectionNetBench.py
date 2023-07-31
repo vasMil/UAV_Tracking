@@ -166,19 +166,21 @@ class DetectionNetBench():
                             milestones=config.scheduler_milestones,
                             gamma=config.scheduler_gamma
                         )
-        self.prof = torch.profiler.profile(
-                activities=[torch.profiler.ProfilerActivity.CPU,
-                            torch.profiler.ProfilerActivity.CUDA],
-                schedule=torch.profiler.schedule(wait=config.prof_wait,
-                                                 warmup=config.prof_warmup,
-                                                 active=config.prof_active, 
-                                                 repeat=config.prof_repeat),
-                on_trace_ready=torch.profiler.
-                                tensorboard_trace_handler('./log/' + model_id),
-                record_shapes=True,
-                with_stack=True,
-                profile_memory=True
-            )
+        self.prof = None
+        if config.profile:
+            self.prof = torch.profiler.profile(
+                    activities=[torch.profiler.ProfilerActivity.CPU,
+                                torch.profiler.ProfilerActivity.CUDA],
+                    schedule=torch.profiler.schedule(wait=config.prof_wait,
+                                                    warmup=config.prof_warmup,
+                                                    active=config.prof_active, 
+                                                    repeat=config.prof_repeat),
+                    on_trace_ready=torch.profiler.
+                                    tensorboard_trace_handler('./log/' + model_id),
+                    record_shapes=True,
+                    with_stack=True,
+                    profile_memory=True
+                )
 
         if checkpoint_path:
             self.load(checkpoint_path)

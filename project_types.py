@@ -15,7 +15,7 @@ if EGO_UAV_NAME != "EgoUAV" or LEADING_UAV_NAME != "LeadingUAV":
 
 Filter_t = Literal["KF", "None"]
 Motion_model_t = Literal["CA", "CV"]
-Path_version_t = Literal["v0", "v1", "v2"]
+Path_version_t = Literal["v0", "v1", "v2", "str8line"]
 Movement_t = Literal["Random", "Path"]
 
 def _map_to_status_code(status: Status_t) -> int:

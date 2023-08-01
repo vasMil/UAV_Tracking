@@ -1,62 +1,46 @@
+import os
 
+import json
+import pickle
+
+from project_types import ExtendedCoSimulatorConfig_t
+from models.FrameInfo import FrameInfo
 
 if __name__ == '__main__':
-    # # Generate (and clean) training data
-    # from nets.DetectionNets import Detection_SSD
-    # from gendata import generate_data_using_segmentation, clean_generated_frames_and_bboxes
-    # generate_data_using_segmentation(3000, frames_root_path="data/empty_map/test/", json_path="data/empty_map/test/bboxes.json")
-    # ssd = Detection_SSD()
-    # ssd.load("nets/checkpoints/checkpoints_v3/ssd300.checkpoint")
-    # clean_generated_frames_and_bboxes(frames_root_path="data/empty_map/test/", json_path="data/empty_map/test/bboxes.json", net=ssd)
+    root_paths = ["recordings/20230801_195333",
+                  "recordings/20230801_200731"]
 
-    # Train the NNs
-    # import torch.backends.cudnn
-    # from nets.DetectionNets import Detection_SSD
-    # ssd = Detection_SSD(root_train_dir="data/empty_map/train", json_train_labels="data/empty_map/train/bboxes.json",
-    #                     root_test_dir="data/empty_map/test", json_test_labels="data/empty_map/test/bboxes.json")
-    # ssd.load(checkpoint_path="nets/checkpoints/ssd/ssd250.checkpoint")
+    configs: list[ExtendedCoSimulatorConfig_t] = []
+    infos: list[list[FrameInfo]] = []
+    for root_path in root_paths:
+        with open(os.path.join(root_path, "config.json"), 'r') as f:
+            configs.append(json.load(f))
+        with open(os.path.join(root_path, "log.pkl"), 'rb') as f:
+            infos.append(pickle.load(f))
 
-    # torch.backends.cudnn.benchmark = True
-    # step = 10
-    # for i in range(0, 300, step):
-    #     ssd.train(num_epochs=step)
-    #     ssd.save(f"nets/checkpoints/ssd/ssd{i+10}.checkpoint")
-    #     ssd.plot_losses("ssd_losses.png")
+    for key in configs[0].keys():
+        if any(config[key] != configs[0][key] for config in configs[1:]):
+            print(f"{key} missmatch")
+    
+    for key in ["sim_lead_pos", "sim_ego_pos", "sim_lead_vel", "sim_ego_vel", "sim_angle_deg", "bbox_score", "extra_timestamp"]:
+        if key == "extra_timestamp":
+            intervals = []
+            for info_list in infos:
+                timestamps = [(frame_info[key] 
+                               - info_list[0][key]
+                               ) for frame_info in info_list
+                ]
+                intervals.append(timestamps)
+            for interval_list in intervals[1:]:
+                for i, interval in enumerate(interval_list):
+                    if interval != intervals[0][i]:
+                        print(f"Interval {i} missmatch")
+                        break
+            continue
 
-    # # Experiments
-    import traceback
-    import shutil
+        for info_list in infos[1:]:
+            for i, info in enumerate(info_list):
+                if(info[key] != infos[0][i][key]):
+                    print(f"{key} {i} missmatch")
+                    break
 
-    from config import DefaultCoSimulatorConfig
-    from models.CoSimulator import CoSimulator
-    from utils.data import plot_for_path
-    # num_tests = 1
-    # best_freq = 30
-    # for v in range(5, 11):
-    #     for i in range(num_tests):
-    config = DefaultCoSimulatorConfig(sim_fps=20, camera_fps=20, infer_freq_Hz=20, filter_freq_Hz=20)
-    co_sim = CoSimulator(config=config, log_folder="recordings/", movement="Path", path_version="v0", display_terminal_progress=True)
-    try:
-        co_sim.start()
-        while not co_sim.done and co_sim.status == 0:
-            co_sim.advance()
-    except Exception:
-        co_sim.finalize("Error")
-        print("There was an error, writing setup file and releasing AirSim...")
-        print("\n" + "*"*10 + " THE ERROR MESSAGE " + "*"*10)
-        traceback.print_exc()
-    finally:
-        co_sim.finalize("Time's up")
-        shutil.rmtree(co_sim.logger.images_path)
-
-    # plot_for_path("recordings/freq_tests/path_v0", "dist_5.png", "time_5.png", "v0", "uav_velocity", 5)
-    # plot_for_path("recordings/vel_tests/path_v0", "dist_30Hz.png", "time_30Hz.png", "v0", "infer_freq_Hz", 30)
-
-    # plot_for_path("recordings/freq_tests/path_v0_lessShadows", "dist_5.png", "time_5.png", "v0", "uav_velocity", 5)
-    # plot_for_path("recordings/vel_tests/path_v0_lessShadows", "dist_30Hz.png", "time_30Hz.png", "v0", "infer_freq_Hz", 30)
-
-    # plot_for_path("recordings/freq_tests/path_v1", "dist_5.png", "time_5.png", "v1", "uav_velocity", 5)
-    # plot_for_path("recordings/vel_tests/path_v1", "dist_30Hz.png", "time_30Hz.png", "v1", "infer_freq_Hz", 30)
-
-    # plot_for_path("recordings/freq_tests/path_v2", "dist_5.png", "time_5.png", "v2", "uav_velocity", 5)
-    # plot_for_path("recordings/vel_tests/path_v2", "dist_30Hz.png", "time_30Hz.png", "v2", "infer_freq_Hz", 65)

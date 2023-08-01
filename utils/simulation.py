@@ -123,7 +123,10 @@ def getTestPath(start_pos: airsim.Vector3r, version: Path_version_t = "v2") -> L
     path_v2 += getSinusoidalPath(rotational_velocity_y=3*math.pi, rotational_velocity_z=3*math.pi)
     path_v2 += [airsim.Vector3r(20, 0, 0)]
 
+    str8line = [start_pos, airsim.Vector3r(500, 0, 0)]
+
     return createPathFromPoints(path_v0 if version == "v0" else\
                                 path_v1 if version == "v1" else\
-                                path_v2
+                                path_v2 if version == "v2" else
+                                str8line
             )

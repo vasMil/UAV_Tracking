@@ -13,6 +13,8 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
+from torchmetrics.detection import MeanAveragePrecision
+
 from config import DefaultTrainingConfig
 from models.BoundingBox import BoundingBoxDataset, BoundingBox
 from project_types import BoundBoxDataset_Item, Bbox_dict_for_nn_t
@@ -28,6 +30,7 @@ class Checkpoint_t(TypedDict):
     optimizer_state_dict: dict[Any, Any]
     scheduler_state_dict: Optional[dict[Any, Any]]
     training_time: float
+    mAP: Dict[str, float]
 
 
 class DetectionNetBench():
@@ -102,6 +105,13 @@ class DetectionNetBench():
         if root_test_dir and json_test_labels:
             self.can_test = True
 
+        self.curr_preds = []
+        self.mAP = MeanAveragePrecision(box_format='xyxy',
+                                        iou_type='bbox',
+                                        iou_thresholds=[0.5, 0.75])
+        self.mAP_dict: Dict[str, float] = {}
+        self.mAP_updated_at_epoch: int = -1
+
         # Organize the arguments into dictionaries
         self.root_dirs = {
             "train": root_train_dir, 
@@ -127,12 +137,12 @@ class DetectionNetBench():
         print(f"{model_id} initialized in {str(self.device)}")
 
         # Model
-        self.model = model.to(self.device)
-        self.model_id = model_id
+        self.model: nn.Module = model.to(self.device)
+        self.model_id: str = model_id
 
         # Model parameters
-        self.batch_size = config.default_batch_size
-        self.num_workers = config.num_workers
+        self.batch_size: int = config.default_batch_size
+        self.num_workers: int = config.num_workers
 
         # Checkpoint info
         self.epoch: int = 0
@@ -202,6 +212,8 @@ class DetectionNetBench():
         self.epoch = checkpoint["epoch"]
         self.losses = checkpoint["losses"]
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        self.mAP_dict = checkpoint["mAP"]
+        self.mAP_updated_at_epoch = checkpoint["epoch"] if checkpoint["mAP"] else -1
         if self.scheduler and checkpoint["scheduler_state_dict"]:
             self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
         else:
@@ -231,7 +243,8 @@ class DetectionNetBench():
             "losses": self.losses,
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": None if not self.scheduler else self.scheduler.state_dict(),
-            "training_time": self.training_time
+            "training_time": self.training_time,
+            "mAP": self.mAP_dict if self.mAP_updated_at_epoch == self.epoch else {}
         }
         torch.save(checkpoint, checkpoint_path)
 
@@ -382,6 +395,7 @@ class DetectionNetBench():
                         # The model in training mode returns a dictionary containing
                         # losses
                         loss_dict = self.model(dev_images, dev_targets)
+                        print(loss_dict)
                         
                         # Sum all the losses returned by the model, as suggested
                         # at: https://github.com/pytorch/vision/blob/main/references/detection/engine.py
@@ -392,7 +406,9 @@ class DetectionNetBench():
                             self.optimizer.step()
                             if self.scheduler: self.scheduler.step()
                             if self.prof: self.prof.step()
-                    
+                        else:
+                            self.curr_preds
+
                     # statistics
                     running_loss += loss.item()
         
@@ -425,6 +441,44 @@ class DetectionNetBench():
         # Print some info about the training session
         print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
         print(f'Total training time {self.training_time // 60:.0f}m {time_elapsed % 60:.0f}s')
+
+    @torch.no_grad()
+    def calculate_metrics(self):
+        if not self.can_test:
+            raise Exception("Paths required for testing have not been specified")
+
+        # Organize the datasets and the dataloaders for training and testing
+        dataset = BoundingBoxDataset(
+            root_dir=self.root_dirs["val"], # type: ignore
+            json_file=self.json_labels["val"] # type: ignore
+        )
+
+        dataloader = DataLoader(
+            dataset, batch_size=self.batch_size, shuffle=True,
+            num_workers=self.num_workers,
+            collate_fn=self._collate_fn
+        )
+
+        self.mAP.reset()
+        self.model.eval()
+        # Iterate over data in batches
+        for images, targets in dataloader:
+            # Move data to device
+            # Chose not to implement this copy in the collate function,
+            # because when I did, an error occurred when trying to use
+            # multiple workers
+            dev_images = [img.to(device=self.device) for img in images]
+            dev_targets = [{
+                "boxes": target["boxes"].to(device=self.device),
+                "labels": target["labels"].to(device=self.device)
+                } for target in targets]
+
+            # Handle output returned by inference
+            dev_preds = self.model(dev_images)
+            
+            self.mAP.update(dev_preds, dev_targets)
+        self.mAP_dict = self.mAP.compute()
+        self.mAP_updated_at_epoch = self.epoch
 
     @torch.no_grad()
     def eval(self,

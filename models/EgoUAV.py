@@ -20,6 +20,7 @@ from models.BoundingBox import BoundingBox
 from nets.DetectionNets import Detection_FasterRCNN
 from nets.DetectionNets import Detection_SSD
 from controller.Controller import Controller
+from controller.CheatController import CheatController
 from controller.KalmanFilter import KalmanFilter
 from models.FrameInfo import EstimatedFrameInfo
 
@@ -42,13 +43,13 @@ class EgoUAV(UAV):
         # self.net = Detection_FasterRCNN()
         # self.net.load("nets/checkpoints/rcnn100.checkpoint")
         self.net = Detection_SSD()
-        self.net.load("nets/checkpoints/ssd/ssd150.checkpoint")
-        self.controller = Controller(vel_magn=vel_magn,
-                                     dt=(1/inference_freq_Hz),
-                                     weight_vel=weight_vel,
-                                     filter_type=filter_type,
-                                     motion_model=motion_model,
-                                     use_pepper_filter=use_pepper_filter)
+        self.net.load("nets/checkpoints/ssd/ssd250.checkpoint")
+        self.controller = CheatController(vel_magn=vel_magn,
+                                          dt=(1/inference_freq_Hz),
+                                          weight_vel=weight_vel,
+                                          filter_type=filter_type,
+                                          motion_model=motion_model,
+                                          use_pepper_filter=use_pepper_filter)
 
     def _getImage(self,
                   view_mode: bool = False,

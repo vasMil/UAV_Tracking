@@ -6,7 +6,7 @@ class PepperFilter():
     
     def __init__(self, n_samples: int = 2) -> None:
         self.n = n_samples
-        self.samples = RollingQueue[np.ndarray](size=n_samples, init_val=np.zeros([3,1]))
+        self.samples = RollingQueue[np.ndarray](size=n_samples)
         # Preserve the time that has passed from the last captured measurement saved by the filter
         # so you may later determine the threashold
         self.time_interval = 0
@@ -37,6 +37,10 @@ class PepperFilter():
              max_magn_uav_vel: float,
              time_interval: float
         ) -> Optional[np.ndarray]:
+        if meas is not None and len(self.samples) == 0:
+            self.samples.push(meas)
+            return meas
+
         # Add the time_interval to the time that has passed
         # since the previous value saved by the filter
         self.time_interval += time_interval
@@ -57,17 +61,21 @@ T = TypeVar('T')
 class RollingQueue(Generic[T]):
     def __init__(self,
                  size: int,
-                 init_val: T
+                 init_val: Optional[T] = None
         ) -> None:
         self.elements: List[T] = []
         self.size = size
-        for _ in range(size):
-            self.elements.append(init_val)
+        if init_val is not None:
+            for _ in range(size):
+                self.elements.append(init_val)
     
     def __getitem__(self, item):
         if item > self.size:
             raise Exception("Index exceeds the size of the RollingQueue")
         return self.elements[item]
+    
+    def __len__(self):
+        return len(self.elements)
     
     def push(self, el: T) -> T:
         self.elements.append(el)

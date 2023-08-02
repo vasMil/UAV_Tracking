@@ -1,4 +1,4 @@
-from typing import Literal, Tuple, TypedDict, Optional, get_args
+from typing import Literal, List, Tuple, Dict, TypedDict, Mapping, Optional, Any, get_args
 
 import torch
 
@@ -80,3 +80,18 @@ class Bbox_dict_for_nn_t(TypedDict):
 class BoundBoxDataset_Item(TypedDict):
     image: torch.Tensor
     bounding_box: Bbox_dict_for_nn_t
+
+class Losses_dict_t(TypedDict):
+    epoch: int
+    train: float
+    val: float
+
+class Checkpoint_t(TypedDict):
+    epoch: int
+    model_state_dict: Mapping[str, Any]
+    optimizer_state_dict: Dict[Any, Any]
+    scheduler_state_dict: Optional[dict[Any, Any]]
+    losses: List[Losses_dict_t]
+    # List[(Epoch: int, mAP: Dict[str, float],)]
+    mAPs: List[Tuple[int, Dict[str, float]]]
+    training_time: float

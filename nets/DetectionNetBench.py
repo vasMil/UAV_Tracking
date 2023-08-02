@@ -17,21 +17,8 @@ from torchmetrics.detection import MeanAveragePrecision
 
 from config import DefaultTrainingConfig
 from models.BoundingBox import BoundingBoxDataset, BoundingBox
-from project_types import BoundBoxDataset_Item, Bbox_dict_for_nn_t
-
-class Losses_dict_t(TypedDict):
-    train: List[float]
-    val: List[float]
-
-class Checkpoint_t(TypedDict):
-    model_state_dict: Mapping[str, Any]
-    epoch: int
-    losses: Losses_dict_t
-    optimizer_state_dict: dict[Any, Any]
-    scheduler_state_dict: Optional[dict[Any, Any]]
-    training_time: float
-    mAP: Dict[str, float]
-
+from project_types import BoundBoxDataset_Item, Bbox_dict_for_nn_t,\
+    Losses_dict_t, Checkpoint_t
 
 class DetectionNetBench():
     """
@@ -96,6 +83,12 @@ class DetectionNetBench():
                              label studio (the tool we used to label
                              our data) for the testing images.
         """
+        self.mAP = MeanAveragePrecision(box_format='xyxy',
+                                        iou_type='bbox',
+                                        iou_thresholds=[0.5, 0.75])
+        self.mAP_dicts: List[Tuple[int, Dict[str, float]]] = []
+        self.losses_plot_ylabel = config.losses_plot_ylabel
+
         # Decide what methods can be executed based on the
         # arguments provided
         if (root_train_dir and json_train_labels and
@@ -104,13 +97,6 @@ class DetectionNetBench():
             self.can_train = True
         if root_test_dir and json_test_labels:
             self.can_test = True
-
-        self.curr_preds = []
-        self.mAP = MeanAveragePrecision(box_format='xyxy',
-                                        iou_type='bbox',
-                                        iou_thresholds=[0.5, 0.75])
-        self.mAP_dict: Dict[str, float] = {}
-        self.mAP_updated_at_epoch: int = -1
 
         # Organize the arguments into dictionaries
         self.root_dirs = {
@@ -147,10 +133,7 @@ class DetectionNetBench():
         # Checkpoint info
         self.epoch: int = 0
         self.training_time: float = 0.
-        self.losses: Losses_dict_t = {
-            "train": [],
-            "val": []
-        }
+        self.losses: List[Losses_dict_t] = []
 
         # Found out the line of code -after the comments- here:
         # https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html
@@ -212,8 +195,7 @@ class DetectionNetBench():
         self.epoch = checkpoint["epoch"]
         self.losses = checkpoint["losses"]
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        self.mAP_dict = checkpoint["mAP"]
-        self.mAP_updated_at_epoch = checkpoint["epoch"] if checkpoint["mAP"] else -1
+        self.mAP_dicts = checkpoint["mAPs"]
         if self.scheduler and checkpoint["scheduler_state_dict"]:
             self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
         else:
@@ -244,7 +226,7 @@ class DetectionNetBench():
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": None if not self.scheduler else self.scheduler.state_dict(),
             "training_time": self.training_time,
-            "mAP": self.mAP_dict if self.mAP_updated_at_epoch == self.epoch else {}
+            "mAPs": self.mAP_dicts
         }
         torch.save(checkpoint, checkpoint_path)
 
@@ -342,12 +324,12 @@ class DetectionNetBench():
         # gradient calculation (autograd) will be disabled.
         self.model.train()
 
-        if not self.losses["val"]:
+        if not self.losses:
             min_loss = math.inf
         elif weight_decay_off:
-            min_loss = min(self.losses["val"])
+            min_loss = min([loss["val"] for loss in self.losses])
         else:
-            min_loss = self.losses["val"][-1]
+            min_loss = self.losses[-1]["val"]
         best_model_wts = copy.deepcopy(self.model.state_dict())
 
         # Train for num_epochs
@@ -356,6 +338,7 @@ class DetectionNetBench():
             print(f'\n\nEpoch {epoch}/{self.epoch + num_epochs - 1}')
             print('-' * 10)
             
+            curr_loss_dict: Losses_dict_t = {"train": 0., "val": 0., "epoch": epoch}
             # Each epoch has a training phase and a validation phase
             for phase in ["train", "val"]:
                 # The proposed way of validating the model in docs is by putting
@@ -376,38 +359,29 @@ class DetectionNetBench():
 
                 # Iterate over data in batches
                 for images, targets in dataloaders[phase]:
-                    # Move data to device
                     # Chose not to implement this copy in the collate function,
-                    # because when I did, an error occurred when trying to use
-                    # multiple workers
+                    # because when I did, an error occurred when trying to use multiple workers
                     dev_images = [img.to(device=self.device) for img in images]
                     dev_targets = [{
                         "boxes": target["boxes"].to(device=self.device),
                         "labels": target["labels"].to(device=self.device)
                         } for target in targets]
                     
-                    # zero the parameter gradients
+                    # Reset the parameter gradients
                     self.optimizer.zero_grad()
 
-                    # forward
-                    # track history if only in train
+                    # Forward: track history if only in train
                     with torch.set_grad_enabled(phase == 'train'):
-                        # The model in training mode returns a dictionary containing
-                        # losses
+                        # The model in training mode returns a dictionary containing losses
                         loss_dict = self.model(dev_images, dev_targets)
-                        print(loss_dict)
-                        
                         # Sum all the losses returned by the model, as suggested
                         # at: https://github.com/pytorch/vision/blob/main/references/detection/engine.py
                         loss: torch.Tensor = sum(loss for loss in loss_dict.values()) # type: ignore
-
                         if phase == "train":
                             loss.backward()
                             self.optimizer.step()
                             if self.scheduler: self.scheduler.step()
                             if self.prof: self.prof.step()
-                        else:
-                            self.curr_preds
 
                     # statistics
                     running_loss += loss.item()
@@ -417,10 +391,7 @@ class DetectionNetBench():
 
                 # Print the loss for each phase
                 print(f"Phase {phase}: average loss = {running_loss}")
-        
-                # Preserve the loss value so you may later plot them and 
-                # decide whether the model is fully trained
-                self.losses[phase].append(running_loss)
+                curr_loss_dict[phase] = running_loss
 
                 # If there is no weight decay and the validation loss is larger
                 # than the current min_loss, revert to last epoch
@@ -430,7 +401,9 @@ class DetectionNetBench():
                     else:
                         min_loss = running_loss
                         best_model_wts = copy.deepcopy(self.model.state_dict())
-                
+
+            self.losses.append(curr_loss_dict)
+
         if self.prof: self.prof.stop()
         
         # Update objects state
@@ -447,38 +420,38 @@ class DetectionNetBench():
         if not self.can_test:
             raise Exception("Paths required for testing have not been specified")
 
+        self.mAP.reset()
+        self.model.eval()
+
         # Organize the datasets and the dataloaders for training and testing
         dataset = BoundingBoxDataset(
             root_dir=self.root_dirs["val"], # type: ignore
             json_file=self.json_labels["val"] # type: ignore
         )
-
         dataloader = DataLoader(
             dataset, batch_size=self.batch_size, shuffle=True,
             num_workers=self.num_workers,
             collate_fn=self._collate_fn
         )
 
-        self.mAP.reset()
-        self.model.eval()
-        # Iterate over data in batches
         for images, targets in dataloader:
-            # Move data to device
-            # Chose not to implement this copy in the collate function,
-            # because when I did, an error occurred when trying to use
-            # multiple workers
             dev_images = [img.to(device=self.device) for img in images]
             dev_targets = [{
                 "boxes": target["boxes"].to(device=self.device),
                 "labels": target["labels"].to(device=self.device)
                 } for target in targets]
 
-            # Handle output returned by inference
             dev_preds = self.model(dev_images)
-            
             self.mAP.update(dev_preds, dev_targets)
-        self.mAP_dict = self.mAP.compute()
-        self.mAP_updated_at_epoch = self.epoch
+
+        dev_mAP_dict = self.mAP.compute()
+        mAP_dict = {}
+        for key, value in dev_mAP_dict.items():
+            if torch.is_tensor(value) and value.device != torch.device("cpu"):
+                mAP_dict.update({key: dev_mAP_dict[key].to(torch.device("cpu"))})
+            else:
+                mAP_dict.update({key: value})
+        self.mAP_dicts.append((self.epoch, mAP_dict,))
 
     @torch.no_grad()
     def eval(self,
@@ -657,11 +630,26 @@ class DetectionNetBench():
         print(f"The first self.eval() required: {first-start} s")
         print(f"self.eval() operates on average at: {num_tests/(end-start)} Hz")
 
-    def plot_losses(self) -> None:
+    def plot_losses(self, filename: str) -> None:
         fig, ax = plt.subplots()
         ax.set_title(f"Losses for model: {self.model_id}")
         for phase in ["train", "val"]:
-            ax.plot(range(self.epoch), self.losses[phase], label=phase)
+            losses = [loss[phase] for loss in self.losses]
+            epochs = [epoch["epoch"] for epoch in self.losses]
+            ax.plot(epochs, losses, label=phase, marker='o', linestyle='-')
         ax.legend()
-        fig.savefig("ssd_losses.png")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel(f"{self.losses_plot_ylabel}")
+        fig.savefig(filename)
+        plt.close(fig)
+
+    def plot_mAPs(self, filename: str, mAP_key: str) -> None:
+        fig, ax = plt.subplots()
+        ax.set_title(f"mAP[{mAP_key}] for {self.model_id} at different epochs")
+        mAPs = [mAP[mAP_key] for _, mAP in self.mAP_dicts]
+        epochs = [epoch for epoch, _ in self.mAP_dicts]
+        ax.plot(epochs, mAPs, '--bo')
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("mean Average Precision (mAP)")
+        fig.savefig(filename)
         plt.close(fig)

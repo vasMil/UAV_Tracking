@@ -52,8 +52,8 @@ class Detection_SSD(DetectionNetBench):
                              num_classes=2,
                              **defaults)
         config = DefaultTrainingConfig()
-        config.default_batch_size = 4
-        config.num_workers = 16
+        config.default_batch_size = 32
+        config.num_workers = 0
         config.sgd_learning_rate = 0.0001
         config.scheduler_milestones = []
         config.scheduler_gamma = 1

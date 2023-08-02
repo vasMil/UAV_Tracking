@@ -16,7 +16,8 @@ class DefaultTrainingConfig():
                  prof_wait: int = 1,
                  prof_warmup: int = 3,
                  prof_active: int = 3,
-                 prof_repeat: int = 1
+                 prof_repeat: int = 1,
+                 losses_plot_ylabel: str = "Sum of model's losses"
             ) -> None:
         self.num_epochs = num_epochs
         self.default_batch_size = default_batch_size
@@ -31,6 +32,8 @@ class DefaultTrainingConfig():
         self.prof_warmup = prof_warmup
         self.prof_active = prof_active
         self.prof_repeat = prof_repeat
+        self.losses_plot_ylabel = losses_plot_ylabel
+
 
 class DefaultCoSimulatorConfig():
     def __init__(self,

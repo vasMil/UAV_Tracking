@@ -212,8 +212,6 @@ class DetectionNetBench():
         self.epoch = checkpoint["epoch"]
         self.losses = checkpoint["losses"]
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        self.mAP_dict = checkpoint["mAP"]
-        self.mAP_updated_at_epoch = checkpoint["epoch"] if checkpoint["mAP"] else -1
         if self.scheduler and checkpoint["scheduler_state_dict"]:
             self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
         else:

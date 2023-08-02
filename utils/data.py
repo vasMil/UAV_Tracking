@@ -2,7 +2,6 @@ from typing import List, Tuple, Any, get_args, Literal, Union
 import os
 import json
 
-import pandas as pd
 import pickle
 import airsim
 import numpy as np
@@ -143,3 +142,12 @@ def plot_for_path(folder_path: str,
     ax.set_ylabel("Simulation Time (s)")
     fig.savefig(os.path.join(folder_path, time_filename))
     plt.close(fig)
+
+def load_run_data(root_path: str) -> Tuple[ExtendedCoSimulatorConfig_t, List[FrameInfo]]:
+    config: ExtendedCoSimulatorConfig_t
+    info: List[FrameInfo]
+    with open(os.path.join(root_path, "config.json"), 'r') as f:
+        config = json.load(f)
+    with open(os.path.join(root_path, "log.pkl"), 'rb') as f:
+        info = pickle.load(f)
+    return config, info

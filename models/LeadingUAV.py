@@ -29,7 +29,10 @@ class LeadingUAV(UAV):
             seed: Optional[int] = None,
             genmode: bool = False
         ) -> None:
-        super().__init__(name, vel_magn, port, genmode=genmode)
+        super().__init__(name=name,
+                         vel_magn=vel_magn,
+                         port=port,
+                         genmode=genmode)
         self.vel_magn = vel_magn
         self.max_vel = max_vel
         self.min_vel = min_vel

@@ -4,6 +4,8 @@ import math
 import airsim
 from msgpackrpc.future import Future
 
+from config import get_gimbal_config
+
 class UAV():
     """
     The base class for all UAV instances in the simulation:
@@ -15,9 +17,11 @@ class UAV():
                  name: str,
                  vel_magn: float = 0.,
                  port: int = 41451,
-                 genmode: bool = False) -> None:
+                 genmode: bool = False
+        ) -> None:
         self.name = name
         self.vel_magn = vel_magn
+        self.use_gimbal = get_gimbal_config()
         self.client = airsim.MultirotorClient(port=port)
         print(f"UAV {self.name} listens at port {port}")
 
@@ -119,10 +123,10 @@ class UAV():
         `Tuple[pitch, roll, yaw]` in degrees
         """
         pitch, roll, yaw = airsim.to_eularian_angles(self.getMultirotorState().kinematics_estimated.orientation)
-        pitch = math.degrees(pitch)
-        roll = math.degrees(roll)
-        yaw = math.degrees(yaw)
-        return (pitch, roll, yaw,)
+        euler_angles_deg: List[float] = []
+        for i, (key, angle) in enumerate({"pitch": pitch, "roll": roll, "yaw": yaw}.items()):
+            euler_angles_deg.append(math.degrees(angle) if not self.use_gimbal[key] else 0.)
+        return tuple(euler_angles_deg)
 
     def rotateToYawAsync(self, yaw) -> Future:
         """
@@ -141,6 +145,15 @@ class UAV():
     def simSetVehiclePose(self, pose: airsim.Pose, ignore_collision=True) -> None:
         """The position is on the UAV's local coordinate frame"""
         self.client.simSetVehiclePose(pose=pose, ignore_collision=ignore_collision, vehicle_name=self.name)
+
+    def simSetCameraToExpectedOrientation(self, camera_name: str) -> None:
+        uav_quart = self.simGetObjectPose().orientation
+        _, roll, yaw = airsim.to_eularian_angles(uav_quart)
+        pose = airsim.Pose()
+        pose.orientation = airsim.to_quaternion(0, roll, yaw)
+        self.client.simSetCameraPose(camera_name=camera_name,
+                                     pose=pose,
+                                     vehicle_name=self.name)
 
     def simGetGroundTruthKinematics(self) -> airsim.KinematicsState:
         return self.client.simGetGroundTruthKinematics(vehicle_name=self.name)

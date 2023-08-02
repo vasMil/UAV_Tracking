@@ -56,7 +56,7 @@ class Logger:
         self.leadingUAV = leadingUAV
         self.config = config
 
-        # Folder and File namse
+        # Folder and File names
         dt = datetime.datetime.now()
         self.parent_folder = os.path.join(folder ,f"{dt.year}{dt.month:02d}{dt.day:02d}_{dt.hour:02d}{dt.minute:02d}{dt.second:02d}")
         self.images_path = f"{self.parent_folder}/images"
@@ -82,13 +82,17 @@ class Logger:
         self.lost_for_frames = 0
         self.tprog = None
         if display_terminal_progress:
-            self.tprog = TerminalProgress(names=["Progress", "Distance", "LeadingUAV Lost For"],
-                                        limits=[config.simulation_time_s*config.camera_fps,
-                                                config.max_allowed_uav_distance_m,
-                                                config.max_time_lead_is_lost_s*config.camera_fps],
-                                        green_area_func=[lambda p: p > config.simulation_time_s*config.camera_fps*0.9, 
-                                                        lambda d: d < 3.5,
-                                                        lambda l: l < config.max_time_lead_is_lost_s*config.camera_fps*0.5])
+            self.tprog = TerminalProgress(names=["Progress", "Distance_x", "Distance_y", "Distance_z", "LeadingUAV Lost For"],
+                                         limits=[config.simulation_time_s*config.camera_fps,
+                                                 config.max_allowed_uav_distance_m,
+                                                 config.max_allowed_uav_distance_m,
+                                                 config.max_allowed_uav_distance_m,
+                                                 config.max_time_lead_is_lost_s*config.camera_fps],
+                                         green_area_func=[lambda p: p > config.simulation_time_s*config.camera_fps*0.9, 
+                                                          lambda d: d < 3.5,
+                                                          lambda d: d < 3.5,
+                                                          lambda d: d < 3.5,
+                                                          lambda l: l < config.max_time_lead_is_lost_s*config.camera_fps*0.5])
 
     def create_frame(self, frame: torch.Tensor, is_bbox_frame: bool):
         """
@@ -192,7 +196,8 @@ class Logger:
         ego_pos = np.array(frame_info["sim_ego_pos"])
         lead_pos = np.array(frame_info["sim_lead_pos"])
         if self.tprog:
-            self.tprog.update([g_frame_idx, np.linalg.norm((ego_pos - lead_pos)).item(), self.lost_for_frames])
+            dist = np.abs(ego_pos - lead_pos)
+            self.tprog.update([g_frame_idx, dist[0], dist[1], dist[2], self.lost_for_frames])
 
     def draw_frame(self,
                    frame: torch.Tensor,

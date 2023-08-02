@@ -95,3 +95,8 @@ class Checkpoint_t(TypedDict):
     # List[(Epoch: int, mAP: Dict[str, float],)]
     mAPs: List[Tuple[int, Dict[str, float]]]
     training_time: float
+
+class Gimbal_t(TypedDict):
+    pitch: bool
+    roll: bool
+    yaw: bool

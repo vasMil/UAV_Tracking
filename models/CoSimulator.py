@@ -6,7 +6,7 @@ import airsim
 import torch
 import numpy as np
 
-from constants import EGO_UAV_NAME, LEADING_UAV_NAME, IMG_HEIGHT, IMG_WIDTH, CLOCK_SPEED
+from constants import EGO_UAV_NAME, LEADING_UAV_NAME, IMG_HEIGHT, IMG_WIDTH, CLOCK_SPEED, EGO_CAMERA_NAME
 from project_types import Status_t, _map_to_status_code, Movement_t, Path_version_t
 from config import DefaultCoSimulatorConfig
 from models.LeadingUAV import LeadingUAV
@@ -37,6 +37,9 @@ class CoSimulator():
             self.done: bool = False
             self.status: int = _map_to_status_code("Running")
             self.time_ns = 0
+            self.config = config
+            self.has_gimbal = np.any(np.array([x for _, x in self.config.use_gimbal.items()]))
+            print(f"Gimbal configuration: {self.config.use_gimbal}")
             
             self.movement: Movement_t = movement
             self.path_version: Optional[Path_version_t] = path_version
@@ -84,7 +87,6 @@ class CoSimulator():
             # with the expected path, so you may later add this path to the
             # movement plot
             self.leading_path: Optional[List[airsim.Vector3r]] = None
-            self.config = config
 
     def start(self):
         # Initialize the control variables
@@ -94,13 +96,13 @@ class CoSimulator():
         self.score, self.prev_score = None, None
         self.orient, self.prev_orient = self.egoUAV.getPitchRollYaw(), self.egoUAV.getPitchRollYaw()
 
-        # Move up so you minimize shadows
-        self.leadingUAV.moveByVelocityAsync(0, 0, -5, 10)
-        self.egoUAV.moveByVelocityAsync(0, 0, -5, 10)
-        self.egoUAV.lastAction.join()
-        self.leadingUAV.lastAction.join()
-        # Wait for the vehicles to stabilize
-        time.sleep(20/CLOCK_SPEED)
+        # # Move up so you minimize shadows
+        # self.leadingUAV.moveByVelocityAsync(0, 0, -5, 10)
+        # self.egoUAV.moveByVelocityAsync(0, 0, -5, 10)
+        # self.egoUAV.lastAction.join()
+        # self.leadingUAV.lastAction.join()
+        # # Wait for the vehicles to stabilize
+        # time.sleep(20/CLOCK_SPEED)
 
         # Pause the simulation
         self.client.simPause(True)
@@ -138,10 +140,13 @@ class CoSimulator():
             self.finalize("Time's up")
         # Check if we lost the LeadingUAV
         elif self.lost_lead_infer_frame_cnt == (self.config.infer_freq_Hz*self.config.max_time_lead_is_lost_s) or\
-             np.linalg.norm((
-                    self.leadingUAV.simGetObjectPose().position - 
-                    self.egoUAV.simGetObjectPose().position).to_numpy_array()
-                ) >= self.config.max_allowed_uav_distance_m:
+            np.any(
+                np.abs(
+                    (self.leadingUAV.simGetObjectPose().position
+                     - self.egoUAV.simGetObjectPose().position
+                    ).to_numpy_array()
+                ) >= self.config.max_allowed_uav_distance_m
+            ):
             print(f"The LeadingUAV was lost for {self.config.max_time_lead_is_lost_s} seconds!")
             self.finalize("LeadingUAV lost")
         # Check for collisions
@@ -157,7 +162,10 @@ class CoSimulator():
 
     def hook_camera_frame_capture(self):
         fail_cnt = 0
+        if self.has_gimbal:
+            self.egoUAV.simSetCameraToExpectedOrientation(EGO_CAMERA_NAME)
         self.camera_frame = self.egoUAV._getImage()
+        self.orient = self.egoUAV.getPitchRollYaw()
         while self.camera_frame.size() != torch.Size([3,  IMG_HEIGHT, IMG_WIDTH]):
             fail_cnt += 1
             self.camera_frame = self.egoUAV._getImage()
@@ -189,7 +197,6 @@ class CoSimulator():
         # required information. Hold on to the bbox, to move towards it when the
         # next frame for evaluation is captured.
         bbox, score = self.egoUAV.net.eval(self.camera_frame, 0)
-        orient = self.egoUAV.getPitchRollYaw()
 
         # There is no way we have a bbox when just inserting the first frame to the logger
         if self.frame_idx != 0:
@@ -202,7 +209,7 @@ class CoSimulator():
         # Update
         self.prev_bbox = bbox
         self.prev_score = score
-        self.prev_orient = orient
+        self.prev_orient = self.orient
         return True if bbox else False
 
     def hook_filter_advance_only(self):

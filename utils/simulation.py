@@ -106,6 +106,7 @@ def getTestPath(start_pos: airsim.Vector3r, version: Path_version_t = "v2") -> L
         airsim.Vector3r(20, 0, 0),    # Move forward so you will not crush on the EgoUAV
     ]
     path_v0 += getSpiralPath(radius=4, height_limit=5, num_points=100, rotational_velocity_z=4*math.pi)
+    path_v0 += [airsim.Vector3r(20, 0, 0)]
 
     path_v1 = [start_pos, airsim.Vector3r(20, 0, 0)]
     path_v1 += getSinusoidalPath(rotational_velocity_y=1*math.pi, rotational_velocity_z=0)

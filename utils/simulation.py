@@ -72,15 +72,17 @@ def getSinusoidalPath(num_points: int = 1000,
                       y_amplitude: float = 10.,
                       z_amplitude: float = 10.,
                       rotational_velocity_y: float = 2*math.pi,
-                      rotational_velocity_z: float = 2*math.pi
+                      rotational_velocity_z: float = 2*math.pi,
+                      init_phase_y: float = 0.,
+                      init_phase_z: float = 0.
     ) -> List[airsim.Vector3r]:
     path = []
     for i in range(num_points):
         angle_y = rotational_velocity_y * i / num_points
         angle_z = rotational_velocity_z * i / num_points
         x = x_length * i / num_points
-        y = y_amplitude * math.cos(angle_y)
-        z = z_amplitude * math.sin(angle_z)
+        y = y_amplitude * math.sin(angle_y + init_phase_y)
+        z = z_amplitude * math.sin(angle_z + init_phase_z)
         path.append(airsim.Vector3r(x, y, -z))
 
     for i in reversed(range(num_points)):
@@ -109,12 +111,12 @@ def getTestPath(start_pos: airsim.Vector3r, version: Path_version_t = "v2") -> L
     path_v0 += [airsim.Vector3r(20, 0, 0)]
 
     path_v1 = [start_pos, airsim.Vector3r(20, 0, 0)]
-    path_v1 += getSinusoidalPath(rotational_velocity_y=1*math.pi, rotational_velocity_z=0)
-    path_v1 += [airsim.Vector3r(20, 0, 0)]
-    path_v1 += getSinusoidalPath(rotational_velocity_y=2*math.pi, rotational_velocity_z=0)
-    path_v1 += [airsim.Vector3r(20, 0, 0)]
-    path_v1 += getSinusoidalPath(rotational_velocity_y=3*math.pi, rotational_velocity_z=0)
-    path_v1 += [airsim.Vector3r(20, 0, 0)]
+    path_v1 += getSinusoidalPath(rotational_velocity_y=2*math.pi,
+                                 rotational_velocity_z=0)
+    path_v1 += getSinusoidalPath(rotational_velocity_y=4*math.pi,
+                                 rotational_velocity_z=0)
+    path_v1 += getSinusoidalPath(rotational_velocity_y=6*math.pi,
+                                 rotational_velocity_z=0)
 
     path_v2 = [start_pos, airsim.Vector3r(20, 0, 0)]
     path_v2 += getSinusoidalPath(rotational_velocity_y=1*math.pi, rotational_velocity_z=1*math.pi)

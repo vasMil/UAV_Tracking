@@ -49,12 +49,16 @@ class Logger:
                  leadingUAV: LeadingUAV,
                  config: DefaultCoSimulatorConfig = DefaultCoSimulatorConfig(),
                  folder: str = "recordings/",
-                 display_terminal_progress: bool = True
+                 display_terminal_progress: bool = True,
+                 keep_frames: bool = False,
+                 get_video: bool = True
             ) -> None:
         # Settings
         self.egoUAV = egoUAV
         self.leadingUAV = leadingUAV
         self.config = config
+        self.keep_frames = keep_frames
+        self.get_video = get_video
 
         # Folder and File names
         dt = datetime.datetime.now()
@@ -220,12 +224,27 @@ class Logger:
         frame = add_info_to_image(frame, frame_info, self.config.score_threshold)
         return frame
 
+    def fix_frame_size(self, frame: torch.Tensor, sim_info: GroundTruthFrameInfo):
+        if frame.size() == torch.Size([3,
+                                       IMG_RESOLUTION_INCR_FACTOR*IMG_HEIGHT,
+                                       IMG_RESOLUTION_INCR_FACTOR*IMG_WIDTH
+                                      ]
+            ):
+            return frame
+        if frame.size() == torch.Size([3, IMG_HEIGHT, IMG_WIDTH]):
+            frame_info = self.merge_to_FrameInfo(bbox=None, sim_info=sim_info)
+            frame = self.draw_frame(frame=frame, bbox=None, frame_info=frame_info)
+            return frame
+        raise Exception("Unexpected frame size!")
+
     def save_frames(self, finalize: bool = False):
         """
         Saves all the frames that have been drawn so far.
         If finalize is True, it will draw any leftover frames,
         with the ground truth information only and save them aswell.
         """
+        if not self.keep_frames:
+            return
         idx = 0
         for idx, frame in enumerate(self.frames):
             # Calculate the global frame index
@@ -238,14 +257,7 @@ class Logger:
                 and info_idx >= self.last_frames_with_bbox_idx[0]:
                 break
             # Make sure that all frames you save have the desired resolution
-            if frame.size() == torch.Size([3, IMG_HEIGHT, IMG_WIDTH]):
-                frame_info = self.merge_to_FrameInfo(bbox=None, sim_info=self.info_per_frame[info_idx])
-                frame = self.draw_frame(frame=frame, bbox=None, frame_info=frame_info)
-            elif frame.size() != torch.Size([3,
-                                             IMG_RESOLUTION_INCR_FACTOR*IMG_HEIGHT,
-                                             IMG_RESOLUTION_INCR_FACTOR*IMG_WIDTH
-                                           ]):
-                raise Exception("Unexpected frame size!")
+            self.fix_frame_size(frame, self.info_per_frame[info_idx])
             save_image(frame, f"{self.images_path}/img_EgoUAV_{self.info_per_frame[info_idx]['timestamp']}.png")
         
         # Delete the frames you saved
@@ -278,7 +290,8 @@ class Logger:
             "frame_count": self.frame_cnt,
             "dist_mse": statistics["dist_mse"],
             "lead_vel_mse": statistics["lead_vel_mse"],
-            "avg_true_dist": statistics["avg_true_dist"]
+            "avg_true_dist": statistics["avg_true_dist"],
+            "use_gimbal": self.config.use_gimbal
         }
         with open(self.config_file, 'w') as f:
             f.write(json.dumps(conf_stat_dict))
@@ -303,9 +316,6 @@ class Logger:
         Using all frames created and drawn by the logger, use OpenCV's
         VideoWriter to write the output video of this run.
         """
-        # Load images into a list
-        files = os.listdir(self.images_path)
-        files.sort()
         # Use cv2's video writer
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         video = cv2.VideoWriter(self.video_path,
@@ -314,11 +324,22 @@ class Logger:
                                 (IMG_WIDTH*IMG_RESOLUTION_INCR_FACTOR,
                                  IMG_HEIGHT*IMG_RESOLUTION_INCR_FACTOR)
                 )
-    
-        # Appending the images to the video one by one
-        for imgf in files: 
-            video.write(cv2.imread(os.path.join(self.images_path, imgf))) 
-        
+        if self.keep_frames:
+            # Load images into a list
+            files = os.listdir(self.images_path)
+            files.sort()
+            # Add the images to the video one by one
+            for imgf in files: 
+                video.write(cv2.imread(os.path.join(self.images_path, imgf))) 
+        else:
+            for i, frame in enumerate(self.frames):
+                frame = self.fix_frame_size(frame, self.info_per_frame[i])
+                video.write((frame*255).to(torch.uint8)
+                                       .permute(1, 2, 0)
+                                       .numpy()
+                                       .astype(np.uint8)
+                        )
+
         # Save the video to the video path
         video.release()
         cv2.destroyAllWindows()
@@ -421,9 +442,10 @@ class Logger:
 
     def exit(self, status: Status_t):
         # Write the mp4 file
-        print("\nWriting the video...")
-        self.save_frames(finalize=True)
-        self.write_video()
+        if self.get_video:
+            print("\nWriting the video...")
+            self.save_frames(finalize=True)
+            self.write_video()
 
         # Write a setup.txt file containing all the important configuration options used for
         # this run

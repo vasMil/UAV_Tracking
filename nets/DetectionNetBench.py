@@ -636,7 +636,7 @@ class DetectionNetBench():
         for phase in ["train", "val"]:
             losses = [loss[phase] for loss in self.losses]
             epochs = [epoch["epoch"] for epoch in self.losses]
-            ax.plot(epochs, losses, label=phase, marker='o', linestyle='-')
+            ax.plot(epochs, losses, label=phase)
         ax.legend()
         ax.set_xlabel("Epoch")
         ax.set_ylabel(f"{self.losses_plot_ylabel}")

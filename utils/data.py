@@ -2,7 +2,6 @@ from typing import List, Tuple, Any, get_args, Literal, Union
 import os
 import json
 
-import pandas as pd
 import pickle
 import airsim
 import numpy as np
@@ -12,7 +11,8 @@ from matplotlib.colors import ListedColormap
 from constants import FILENAME_LEADING_ZEROS, STATUS_COLORS
 from models.BoundingBox import BoundingBoxFactory
 from models.FrameInfo import FrameInfo
-from project_types import Status_t, Path_version_t, ExtendedCoSimulatorConfig_t, map_status_to_color, _map_to_status_code
+from project_types import Status_t, Path_version_t, ExtendedCoSimulatorConfig_t,\
+    map_status_to_color, map_to_binary_status, map_to_status_code, map_from_status_code
 
 def get_folders_in_path(path: str) -> List[str]:
     folders = []
@@ -143,3 +143,54 @@ def plot_for_path(folder_path: str,
     ax.set_ylabel("Simulation Time (s)")
     fig.savefig(os.path.join(folder_path, time_filename))
     plt.close(fig)
+
+def plot_success_rate(folder_path: str,
+                      out_filename: str,
+                      path_version: Path_version_t,
+                      constant_key: Literal["uav_velocity", "infer_freq_Hz"],
+                      constant_value: Union[int, float]
+    ):
+    folders = get_folders_in_path(folder_path)
+    n = len(folders)
+    x = np.zeros(n)
+    status_codes = np.zeros(n, dtype=np.int64)
+
+    if constant_key == "uav_velocity":
+        x_key = "infer_freq_Hz"
+        x_label = "Inference Frequency (Hz)"
+    else:
+        x_key = "uav_velocity"
+        x_label = "UAV Velocity (m/s)"
+
+    # Load data from runs one by one and update your statistics
+    i = 0
+    for folder in folders:
+        _, config, status = folder_to_info(folder)
+        if config[constant_key] != constant_value:
+            continue
+        x[i] = config[x_key]
+        status_codes[i] = map_to_status_code(status)
+        i += 1
+    x = x[0:i]
+
+    unq_x = np.unique(x)
+    unq_x_succ_rate = np.zeros(len(unq_x))
+    for i, x_val in enumerate(unq_x):
+        mask = (x == x_val)
+        x_val_status_codes = status_codes[mask]
+        for x_val_status_code in x_val_status_codes:
+            if map_to_binary_status(
+                map_from_status_code(
+                    x_val_status_code
+                )) == "Success":
+                unq_x_succ_rate[i] += 1
+        unq_x_succ_rate[i] /= len(x_val_status_codes)
+    
+    fig, ax = plt.subplots()
+    ax: plt.Axes
+    ax.plot(unq_x, unq_x_succ_rate, color="green", marker='o', linestyle="-")
+    ax.set_xlabel(x_label)
+    ax.set_ylabel("Success rate")
+    ax.set_title(f"SSD - Path {path_version}")
+    fig.savefig(out_filename)
+    plt.close(fig)      

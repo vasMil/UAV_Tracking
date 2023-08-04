@@ -69,3 +69,4 @@ class Detection_SSD(DetectionNetBench):
                          json_test_labels=json_test_labels,
                          checkpoint_path=checkpoint_path
                     )
+        self.losses_plot_ylabel = "Sum of localization (Smooth L1 loss) and classification (Softmax loss)"

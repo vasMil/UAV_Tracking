@@ -7,7 +7,7 @@ import torch
 import numpy as np
 
 from constants import EGO_UAV_NAME, LEADING_UAV_NAME, IMG_HEIGHT, IMG_WIDTH, CLOCK_SPEED, EGO_CAMERA_NAME
-from project_types import Status_t, _map_to_status_code, Movement_t, Path_version_t
+from project_types import Status_t, map_to_status_code, Movement_t, Path_version_t
 from config import DefaultCoSimulatorConfig
 from models.LeadingUAV import LeadingUAV
 from models.EgoUAV import EgoUAV
@@ -20,7 +20,9 @@ class CoSimulator():
                  log_folder: str = "recordings/",
                  movement: Movement_t = "Random",
                  path_version: Optional[Path_version_t] = None,
-                 display_terminal_progress: bool = True
+                 display_terminal_progress: bool = True,
+                 keep_frames: bool = False,
+                 get_video: bool = True
         ):
             if config.sim_fps < config.camera_fps:
                 raise Exception("sim_fps cannot be less than camera_fps")
@@ -34,10 +36,11 @@ class CoSimulator():
             else:
                 config.filter_freq_Hz = config.infer_freq_Hz
             
-            self.done: bool = False
-            self.status: int = _map_to_status_code("Running")
-            self.time_ns = 0
             self.config = config
+
+            self.done: bool = False
+            self.status: int = map_to_status_code("Running")
+            self.time_ns = 0
             self.has_gimbal = np.any(np.array([x for _, x in self.config.use_gimbal.items()]))
             print(f"Gimbal configuration: {self.config.use_gimbal}")
             
@@ -47,6 +50,7 @@ class CoSimulator():
                 raise Exception("If movement is Path, path_version cannot be None!")
             
             self.lost_lead_infer_frame_cnt = 0
+
 
             # Create a client to communicate with the UE
             self.client = airsim.MultirotorClient()
@@ -81,7 +85,9 @@ class CoSimulator():
                                  leadingUAV=self.leadingUAV,
                                  config=config,
                                  folder=log_folder,
-                                 display_terminal_progress=display_terminal_progress)
+                                 display_terminal_progress=display_terminal_progress,
+                                 keep_frames=keep_frames,
+                                 get_video=get_video)
 
             # Define a variable that you may update inside hook_leadingUAV_move
             # with the expected path, so you may later add this path to the
@@ -246,7 +252,7 @@ class CoSimulator():
         if self.done == True:
             return
         self.done = True
-        self.status = _map_to_status_code(status)
+        self.status = map_to_status_code(status)
         # Save the last evaluated bbox
         _, est_frame_info = self.egoUAV.moveToBoundingBoxAsync(self.bbox, self.orient, dt=(1/self.config.filter_freq_Hz))
         self.logger.update_frame(bbox=self.bbox, est_frame_info=est_frame_info)

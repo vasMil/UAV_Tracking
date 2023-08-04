@@ -7,6 +7,7 @@ from constants import EGO_UAV_NAME, LEADING_UAV_NAME, STATUS_COLORS
 # Define a Status_t (type) so you may use a str to define the status when the coSimulator exits
 # but have the status be an int as it is expected
 Status_t = Literal["Error", "Running", "Time's up", "LeadingUAV lost", "EgoUAV and LeadingUAV collision", "EgoUAV collision", "LeadingUAV collision"]
+Binary_status_t = Literal["Success", "Fail"]
 
 # Make sure that if I update the config file in the future, I will be reminded to also update the messages
 # defined is Status_t
@@ -17,8 +18,12 @@ Filter_t = Literal["KF", "None"]
 Motion_model_t = Literal["CA", "CV"]
 Path_version_t = Literal["v0", "v1", "v2"]
 Movement_t = Literal["Random", "Path"]
+class Gimbal_t(TypedDict):
+    pitch: bool
+    roll: bool
+    yaw: bool
 
-def _map_to_status_code(status: Status_t) -> int:
+def map_to_status_code(status: Status_t) -> int:
     """
     Maps the status to the appropriate integer code.
     - status = Error => -1
@@ -33,8 +38,22 @@ def _map_to_status_code(status: Status_t) -> int:
     """
     return get_args(Status_t).index(status) - 1
 
-def map_status_to_color(status: Status_t) -> str:
-    return STATUS_COLORS[get_args(Status_t).index(status)]
+def map_from_status_code(status_code: int) -> Status_t:
+    return list(get_args(Status_t))[status_code-1]
+
+def map_to_binary_status(status: Status_t) -> Binary_status_t:
+    if status in ["Error", "Running", "LeadingUAV lost", "EgoUAV collision", "LeadingUAV collision"]:
+        return "Fail"
+    if status in ["Time's up", "EgoUAV and LeadingUAV collision"]:
+        return "Success"
+    else:
+        raise Exception(f"No specified Binary_status_t for status: {status}")
+
+def map_status_to_color(status: Status_t, mode: Literal["binary", "detailed"] = "detailed") -> str:
+    if mode == "detailed":
+        return STATUS_COLORS[get_args(Status_t).index(status)]
+    bin_stat = map_to_binary_status(status)
+    return "green" if bin_stat == "Success" else "red"
 
 class Statistics_t(TypedDict):
     dist_mse: float
@@ -62,6 +81,7 @@ class ExtendedCoSimulatorConfig_t(TypedDict):
     dist_mse: float
     lead_vel_mse: Optional[float]
     avg_true_dist: float
+    use_gimbal: Gimbal_t
 
 class Bbox_dict_t(TypedDict):
     x1: float
@@ -95,8 +115,3 @@ class Checkpoint_t(TypedDict):
     # List[(Epoch: int, mAP: Dict[str, float],)]
     mAPs: List[Tuple[int, Dict[str, float]]]
     training_time: float
-
-class Gimbal_t(TypedDict):
-    pitch: bool
-    roll: bool
-    yaw: bool

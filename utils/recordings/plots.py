@@ -1,67 +1,14 @@
-from typing import List, Tuple, Any, get_args, Literal, Union
+from typing import List, Any, get_args, Literal, Union
 import os
-import json
 
-import pickle
-import airsim
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 
-from constants import FILENAME_LEADING_ZEROS, STATUS_COLORS
-from models.BoundingBox import BoundingBoxFactory
-from models.FrameInfo import FrameInfo
-from project_types import Status_t, Path_version_t, ExtendedCoSimulatorConfig_t,\
+from utils.recordings.helpers import get_folders_in_path, folder_to_info
+from constants import STATUS_COLORS
+from project_types import Status_t, Path_version_t,\
     map_status_to_color, map_to_binary_status, map_to_status_code, map_from_status_code
-
-def get_folders_in_path(path: str) -> List[str]:
-    folders = []
-    for entry in os.scandir(path):
-        if entry.is_dir():
-            folders.append(os.path.join(path, entry.name))
-    return folders
-
-def rename_images(root_path: str, json_file: str) -> None:
-    root_path = "data/empty_map/train/"
-    bboxes = BoundingBoxFactory(json_file).bboxes
-    
-    for bbox in bboxes:
-        img_path = os.path.join(root_path, bbox.img_name) # type: ignore
-        dest_path = os.path.join(root_path, "temp_" + bbox.img_name) # type: ignore
-        os.rename(img_path, dest_path)
-
-    for i, bbox in enumerate(bboxes):
-        img_path = os.path.join(root_path, "temp_" + bbox.img_name) # type: ignore
-        new_img_name = str(i).zfill(FILENAME_LEADING_ZEROS) + ".png"
-        dest_path = os.path.join(root_path, new_img_name) # type: ignore
-        os.rename(img_path, dest_path)
-        bbox.img_name = new_img_name
-
-    with open(json_file, 'w') as f:
-        json.dump([bbox.__dict__() for bbox in bboxes], f)
-
-def folder_to_info(path: str) -> Tuple[List[FrameInfo], ExtendedCoSimulatorConfig_t, Status_t]:
-    pkl_file = os.path.join(path, "log.pkl")
-    json_file = os.path.join(path, "config.json")
-    with open(pkl_file, 'rb') as f:
-        frames_info: List[FrameInfo] = pickle.load(file=f)
-
-    with open(json_file, 'r') as f:
-        extended_config: ExtendedCoSimulatorConfig_t = json.load(fp=f)
-    
-    status: Status_t = extended_config["status"]
-    return (frames_info, extended_config, status)
-
-def update_movement_plots(path: str, start_pos: airsim.Vector3r, path_version: Path_version_t):
-    from models.logger import GraphLogs
-    from utils.simulation import getTestPath
-    folders = get_folders_in_path(path)
-    for folder in folders:
-        movement_file = os.path.join(folder, "movement.png")
-        frames_info, _, _ = folder_to_info(folder)
-        os.remove(movement_file)
-        gl = GraphLogs(frames_info)
-        gl.plot_movement_3d(movement_file, getTestPath(start_pos=start_pos, version=path_version))
 
 def _plot_for_path(fig: Any, ax: plt.Axes, x: np.ndarray, y: np.ndarray, c: List[str]):
     # Calculate the average y values (between runs)
@@ -193,4 +140,4 @@ def plot_success_rate(folder_path: str,
     ax.set_ylabel("Success rate")
     ax.set_title(f"SSD - Path {path_version}")
     fig.savefig(out_filename)
-    plt.close(fig)      
+    plt.close(fig)

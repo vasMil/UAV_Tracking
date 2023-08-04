@@ -1,68 +1,39 @@
+import traceback
+import shutil
 
+from config import DefaultCoSimulatorConfig
+from models.CoSimulator import CoSimulator
 
 if __name__ == '__main__':
-    # # Generate (and clean) training data
-    # from nets.DetectionNets import Detection_FasterRCNN
-    # from gendata import generate_data_using_segmentation, clean_generated_frames_and_bboxes
-    # generate_data_using_segmentation(3000, frames_root_path="data/empty_map/test/", json_path="data/empty_map/test/bboxes.json")
-    # rcnn = Detection_FasterRCNN()
-    # rcnn.load("nets/checkpoints/rcnn100.checkpoint")
-    # clean_generated_frames_and_bboxes(frames_root_path="data/empty_map/test/", json_path="data/empty_map/test/bboxes.json", net=rcnn)
-
-    # Train the NNs
-    # import torch.backends.cudnn
-    # from nets.DetectionNets import Detection_SSD
-    # ssd = Detection_SSD(root_train_dir="data/empty_map/train", json_train_labels="data/empty_map/train/bboxes.json",
-    #                     root_test_dir="data/empty_map/test", json_test_labels="data/empty_map/test/bboxes.json")
-
-    # torch.backends.cudnn.benchmark = True
-    # save_step = 50
-    # map_step = 10
-    # step = map_step
-    # for i in range(0, 300, step):
-    #     ssd.train(num_epochs=step)
-    #     if i != 0 and i % map_step == 0:
-    #         ssd.calculate_metrics()
-    #         ssd.plot_mAPs("nets/checkpoints/ssd/ssd_mAP_50.png", "map_50")
-    #         ssd.plot_mAPs("nets/checkpoints/ssd/ssd_mAP_75.png", "map_75")
-    #     if i != 0 and i % save_step == 0:
-    #         ssd.save(f"nets/checkpoints/ssd/ssd{i+step}.checkpoint")
-    #         ssd.plot_losses("nets/checkpoints/ssd/ssd_losses.png")
-    #         if i == 150:
-    #             save_step = 10
-
-
-    # Experiments
-    import traceback
-    import shutil
-
-    from config import DefaultCoSimulatorConfig
-    from models.CoSimulator import CoSimulator
-    from utils.data import plot_for_path
-    num_tests = 3
-    best_freq = 27
-    v = 5
-    # for v in range(4, 7):
-    #     for i in range(num_tests):
-    config = DefaultCoSimulatorConfig(sim_fps=best_freq,
-                                        camera_fps=best_freq,
-                                        infer_freq_Hz=best_freq,
-                                        filter_freq_Hz=best_freq,
-                                        uav_velocity=v)
-    co_sim = CoSimulator(config=config, log_folder="recordings/vel_tests/path_v0", movement="Path", path_version="v0", display_terminal_progress=True)
-    try:
-        co_sim.start()
-        while not co_sim.done and co_sim.status == 0:
-            co_sim.advance()
-    except Exception:
-        co_sim.finalize("Error")
-        print("There was an error, writing setup file and releasing AirSim...")
-        print("\n" + "*"*10 + " THE ERROR MESSAGE " + "*"*10)
-        traceback.print_exc()
-    finally:
-        co_sim.finalize("Time's up")
-        shutil.rmtree(co_sim.logger.images_path)
-
+    num_runs = 5
+    for f in range(5, 36, 1):
+        run_cnt = 0
+        while run_cnt < num_runs:
+            config = DefaultCoSimulatorConfig(sim_fps=f,
+                                                camera_fps=f,
+                                                infer_freq_Hz=f,
+                                                filter_freq_Hz=f)
+            co_sim = CoSimulator(config=config, log_folder="recordings/freq_tests/path_v0",
+                                movement="Path",
+                                path_version="v0",
+                                display_terminal_progress=True,
+                                keep_frames=False,
+                                get_video=False)
+            try:
+                co_sim.start()
+                while not co_sim.done and co_sim.status == 0:
+                    co_sim.advance()
+            except Exception:
+                co_sim.finalize("Error")
+                print("There was an error, writing setup file and releasing AirSim...")
+                print("\n" + "*"*10 + " THE ERROR MESSAGE " + "*"*10)
+                traceback.print_exc()
+                shutil.rmtree(co_sim.logger.parent_folder)
+                run_cnt -= 1
+            finally:
+                co_sim.finalize("Time's up")
+                run_cnt += 1
+    # from utils.data import plot_for_path
     # plot_for_path("recordings/freq_tests/path_v0", "dist_5.png", "time_5.png", "v0", "uav_velocity", 5)
     # plot_for_path("recordings/vel_tests/path_v0", f"dist_{best_freq}Hz.png", f"time_{best_freq}Hz.png", "v0", "infer_freq_Hz", best_freq)
 
@@ -74,3 +45,10 @@ if __name__ == '__main__':
 
     # plot_for_path("recordings/freq_tests/path_v2", "dist_5.png", "time_5.png", "v2", "uav_velocity", 5)
     # plot_for_path("recordings/vel_tests/path_v2", "dist_30Hz.png", "time_30Hz.png", "v2", "infer_freq_Hz", 65)
+
+    # from utils.data import plot_success_rate
+    # plot_success_rate("recordings/freq_tests/path_v0",
+    #                   "recordings/freq_tests/path_v0/success_rate.png",
+    #                   path_version="v0",
+    #                   constant_key="uav_velocity",
+    #                   constant_value=5)

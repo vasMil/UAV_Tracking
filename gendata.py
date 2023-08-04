@@ -212,17 +212,17 @@ def generate_data_using_segmentation(num_samples: int,
 
         # Refine the bbox estimation returned by the mesh,
         # using the segmentation camera
-        x = []
-        y = []
+        x: List[int] = []
+        y: List[int] = []
         for h in range(y_min, y_max):
             for w in range(x_min, x_max):
                 if np.linalg.norm(img_segme[:, h, w]) == 0:
                     x.append(w)
                     y.append(h)
         
-        if len(x) < 8 or min(x)<0 or min(y)<0 or\
-             max(x)>frame.shape[2] or max(y)>frame.shape[1] or\
-                max(x)-min(x) <= 0 or max(y)-min(y) <= 0:
+        if len(x) < 8 or min(x) < 0 or min(y) < 0 or\
+           max(x) > frame.shape[2] or max(y) > frame.shape[1] or\
+           max(x) - min(x) <= 0 or max(y) - min(y) <= 0:
             continue
 
         bbox = BoundingBox(x1=min(x),

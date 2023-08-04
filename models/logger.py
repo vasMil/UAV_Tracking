@@ -334,11 +334,9 @@ class Logger:
         else:
             for i, frame in enumerate(self.frames):
                 frame = self.fix_frame_size(frame, self.info_per_frame[i])
-                video.write((frame*255).to(torch.uint8)
-                                       .permute(1, 2, 0)
-                                       .numpy()
-                                       .astype(np.uint8)
-                        )
+                frame_for_cv2 = (frame*255).to(torch.uint8).permute(1, 2, 0).numpy()
+                frame_for_cv2 = cv2.cvtColor(frame_for_cv2, cv2.COLOR_RGB2BGR)
+                video.write(frame_for_cv2)
 
         # Save the video to the video path
         video.release()

@@ -79,7 +79,7 @@ class DefaultCoSimulatorConfig():
                  filter_type: Filter_t = "KF",
                  motion_model: Motion_model_t = "CA",
                  use_pepper_filter: bool = True,
-                 leadingUAV_update_vel_interval_s: int = 4,
+                 leadingUAV_update_vel_interval_s: int = 2,
                  max_time_lead_is_lost_s: int = 2,
                  max_allowed_uav_distance_m: int = 15
             ) -> None:

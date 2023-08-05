@@ -20,6 +20,7 @@ from models.BoundingBox import BoundingBox
 from nets.DetectionNets import Detection_FasterRCNN
 from nets.DetectionNets import Detection_SSD
 from controller.Controller import Controller
+from controller.CheatController import CheatController
 from controller.KalmanFilter import KalmanFilter
 from models.FrameInfo import EstimatedFrameInfo
 

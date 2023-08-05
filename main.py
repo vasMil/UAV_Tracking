@@ -1,11 +1,16 @@
 import traceback
 import shutil
 
+import numpy as np
+
 from config import DefaultCoSimulatorConfig
 from models.CoSimulator import CoSimulator
+from utils.recordings.plots import plot_for_path, plot_success_rate
+from utils.path import plot_path
 
 if __name__ == '__main__':
-    num_runs = 5
+    plot_path(np.array([3.5, 0, -1.6]), "v0", "recordings/freq_tests/path_v0/path_v0.png")
+    num_runs = 10
     for f in range(5, 36, 1):
         run_cnt = 0
         while run_cnt < num_runs:
@@ -33,20 +38,19 @@ if __name__ == '__main__':
             finally:
                 co_sim.finalize("Time's up")
                 run_cnt += 1
-    # from utils.data import plot_for_path
+    
     # plot_for_path("recordings/freq_tests/path_v0", "dist_5.png", "time_5.png", "v0", "uav_velocity", 5)
-    # plot_for_path("recordings/vel_tests/path_v0", f"dist_{best_freq}Hz.png", f"time_{best_freq}Hz.png", "v0", "infer_freq_Hz", best_freq)
+    # # plot_for_path("recordings/vel_tests/path_v0", f"dist_{best_freq}Hz.png", f"time_{best_freq}Hz.png", "v0", "infer_freq_Hz", best_freq)
 
-    # plot_for_path("recordings/freq_tests/path_v0_lessShadows", "dist_5.png", "time_5.png", "v0", "uav_velocity", 5)
-    # plot_for_path("recordings/vel_tests/path_v0_lessShadows", "dist_30Hz.png", "time_30Hz.png", "v0", "infer_freq_Hz", 30)
+    # # plot_for_path("recordings/freq_tests/path_v0_lessShadows", "dist_5.png", "time_5.png", "v0", "uav_velocity", 5)
+    # # plot_for_path("recordings/vel_tests/path_v0_lessShadows", "dist_30Hz.png", "time_30Hz.png", "v0", "infer_freq_Hz", 30)
 
-    # plot_for_path("recordings/freq_tests/path_v1", "dist_5.png", "time_5.png", "v1", "uav_velocity", 5)
-    # plot_for_path("recordings/vel_tests/path_v1", "dist_30Hz.png", "time_30Hz.png", "v1", "infer_freq_Hz", 30)
+    # # plot_for_path("recordings/freq_tests/path_v1", "dist_5.png", "time_5.png", "v1", "uav_velocity", 5)
+    # # plot_for_path("recordings/vel_tests/path_v1", "dist_30Hz.png", "time_30Hz.png", "v1", "infer_freq_Hz", 30)
 
-    # plot_for_path("recordings/freq_tests/path_v2", "dist_5.png", "time_5.png", "v2", "uav_velocity", 5)
-    # plot_for_path("recordings/vel_tests/path_v2", "dist_30Hz.png", "time_30Hz.png", "v2", "infer_freq_Hz", 65)
+    # # plot_for_path("recordings/freq_tests/path_v2", "dist_5.png", "time_5.png", "v2", "uav_velocity", 5)
+    # # plot_for_path("recordings/vel_tests/path_v2", "dist_30Hz.png", "time_30Hz.png", "v2", "infer_freq_Hz", 65)
 
-    # from utils.data import plot_success_rate
     # plot_success_rate("recordings/freq_tests/path_v0",
     #                   "recordings/freq_tests/path_v0/success_rate.png",
     #                   path_version="v0",

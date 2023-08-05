@@ -12,7 +12,7 @@ from config import DefaultCoSimulatorConfig
 from models.LeadingUAV import LeadingUAV
 from models.EgoUAV import EgoUAV
 from models.logger import Logger, GraphLogs
-from utils.simulation import getTestPath
+from utils.path import get_path
 
 class CoSimulator():
     def __init__(self,
@@ -187,7 +187,7 @@ class CoSimulator():
             self.leadingUAV.random_move(self.config.leadingUAV_update_vel_interval_s)
         elif self.movement == "Path" and self.path_version is not None:
             if self.frame_idx != 0: return
-            self.leading_path = getTestPath(self.leadingUAV.simGetGroundTruthKinematics().position, version=self.path_version)
+            self.leading_path = get_path(self.leadingUAV.simGetGroundTruthKinematics().position, version=self.path_version)
             self.leadingUAV.moveOnPathAsync(self.leading_path)
 
     def hook_net_inference(self) -> bool:

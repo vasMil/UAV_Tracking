@@ -43,9 +43,15 @@ def compare_runs(root_paths: List[str]):
     print("\nChecking for any configuration missmatch")
     for key in configs[0].keys():
         if key == "frame_count" and any(config[key] != configs[0][key] for config in configs[1:]):
-            raise Exception("frame_count missmatch")    
+            # raise Exception("frame_count missmatch")
+            print(f"{key} missmatch")
+            continue
         if any(config[key] != configs[0][key] for config in configs[1:]):
             print(f"{key} missmatch")
+    
+    min_len = min([len(info) for info in infos])
+    for i, info in enumerate(infos):
+        infos[i] = info[:min_len]
     
     print("\nSearching for any missmatch in the information collected for each run")
     for key in ["sim_lead_pos", "sim_ego_pos", "sim_lead_vel", "sim_ego_vel", "sim_angle_deg", "bbox_score", "extra_timestamp"]:

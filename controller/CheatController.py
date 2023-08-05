@@ -45,4 +45,18 @@ class CheatController(Controller):
         lead_pos = self.client.simGetGroundTruthKinematics("LeadingUAV").position.to_numpy_array().reshape([3,1])
         offset = lead_pos - ego_pos
         offset[0,0] += 3.5
-        return super().step(offset, np.zeros([3]), ego_pos=ego_pos)
+        # If you want to use the rest of the pipeline use the return statement below
+        # return super().step(offset, np.zeros([3]), ego_pos=ego_pos)
+        lead_vel = self.client.simGetGroundTruthKinematics("LeadingUAV").linear_velocity.to_numpy_array().reshape([3,1])
+        velocity = super().offset_to_velocity(offset)
+        yaw = super().offset_to_yaw_angle(offset, lead_velocity=lead_vel, ego_velocity=velocity)
+
+        info: EstimatedFrameInfo = {
+            "angle_deg": yaw,
+            "egoUAV_position": tuple(ego_pos.tolist()),
+            "leadingUAV_position": tuple((ego_pos + offset).tolist()),
+            "egoUAV_target_velocity": tuple(velocity.tolist()),
+            "leadingUAV_velocity": tuple(lead_vel.tolist()),
+            "still_tracking": True
+        }
+        return velocity, yaw, info

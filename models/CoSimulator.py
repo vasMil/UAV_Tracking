@@ -7,7 +7,7 @@ import torch
 import numpy as np
 
 from constants import EGO_UAV_NAME, LEADING_UAV_NAME, IMG_HEIGHT, IMG_WIDTH, CLOCK_SPEED, EGO_CAMERA_NAME
-from project_types import Status_t, map_to_status_code, Movement_t, Path_version_t
+from project_types import Status_t, map_status_to_int, Movement_t, Path_version_t
 from config import DefaultCoSimulatorConfig
 from models.LeadingUAV import LeadingUAV
 from models.EgoUAV import EgoUAV
@@ -39,7 +39,7 @@ class CoSimulator():
             self.config = config
 
             self.done: bool = False
-            self.status: int = map_to_status_code("Running")
+            self.status: int = map_status_to_int("Running")
             self.time_ns = 0
             self.has_gimbal = np.any(np.array([x for _, x in self.config.use_gimbal.items()]))
             print(f"Gimbal configuration: {self.config.use_gimbal}")
@@ -252,7 +252,7 @@ class CoSimulator():
         if self.done == True:
             return
         self.done = True
-        self.status = map_to_status_code(status)
+        self.status = map_status_to_int(status)
         # Save the last evaluated bbox
         _, est_frame_info = self.egoUAV.moveToBoundingBoxAsync(self.bbox, self.orient, dt=(1/self.config.filter_freq_Hz))
         self.logger.update_frame(bbox=self.bbox, est_frame_info=est_frame_info)

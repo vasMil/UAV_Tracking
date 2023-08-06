@@ -1,13 +1,13 @@
-from typing import Literal, List, Tuple, Dict, TypedDict, Mapping, Optional, Any, get_args
+from typing import Literal, List, Tuple, Dict, TypedDict, Mapping, Optional, Union, Any, get_args
 
 import torch
 
-from constants import EGO_UAV_NAME, LEADING_UAV_NAME, STATUS_COLORS
+from constants import EGO_UAV_NAME, LEADING_UAV_NAME, STATUS_COLORS, BINARY_STATUS_COLORS
 
 # Define a Status_t (type) so you may use a str to define the status when the coSimulator exits
 # but have the status be an int as it is expected
 Status_t = Literal["Error", "Running", "Time's up", "LeadingUAV lost", "EgoUAV and LeadingUAV collision", "EgoUAV collision", "LeadingUAV collision"]
-Binary_status_t = Literal["Success", "Fail"]
+Binary_status_t = Literal["Fail", "Success"]
 
 # Make sure that if I update the config file in the future, I will be reminded to also update the messages
 # defined is Status_t
@@ -23,37 +23,51 @@ class Gimbal_t(TypedDict):
     roll: bool
     yaw: bool
 
-def map_to_status_code(status: Status_t) -> int:
+def map_status_to_int(status: Status_t) -> int:
     """
     Maps the status to the appropriate integer code.
     - status = Error => -1
     - status = Running -> 0
     - status = Time's up -> 1
-    - status = EgoUAV and LeadingUAV collision -> 2
-    - status = EgoUAV collision -> 3
-    - status = LeadingUAV collision -> 4
+    - status = LeadingUAV lost -> 2
+    - status = EgoUAV and LeadingUAV collision -> 3
+    - status = EgoUAV collision -> 4
+    - status = LeadingUAV collision -> 5
 
     Returns:
     The code
     """
     return get_args(Status_t).index(status) - 1
 
-def map_from_status_code(status_code: int) -> Status_t:
+def map_status_to_string(status_code: int) -> Status_t:
     return list(get_args(Status_t))[status_code-1]
 
-def map_to_binary_status(status: Status_t) -> Binary_status_t:
-    if status in ["Error", "Running", "LeadingUAV lost", "EgoUAV collision", "LeadingUAV collision"]:
-        return "Fail"
-    if status in ["Time's up", "EgoUAV and LeadingUAV collision"]:
-        return "Success"
+def map_status_to_binary_bool(status: Union[int, Status_t]) -> bool:
+    if type(status) == Status_t:
+        status = map_status_to_int(status) # type: ignore
+
+    if status in [-1, 0, 2, 4, 5]:
+        return False
+    if status in [1, 3]:
+        return True
     else:
         raise Exception(f"No specified Binary_status_t for status: {status}")
 
-def map_status_to_color(status: Status_t, mode: Literal["binary", "detailed"] = "detailed") -> str:
-    if mode == "detailed":
-        return STATUS_COLORS[get_args(Status_t).index(status)]
-    bin_stat = map_to_binary_status(status)
-    return "green" if bin_stat == "Success" else "red"
+def map_binary_status_to_bool(binStatus: Binary_status_t) -> bool:
+    return get_args(Binary_status_t).index(binStatus) == 1
+
+def map_binary_status_to_string(binStatus: bool):
+    return list(get_args(Binary_status_t))[int(binStatus)]
+
+def map_status_to_color(status: Union[Status_t, int]) -> str:
+    if type(status) == Status_t:
+        status = map_status_to_int(status) # type: ignore
+    return STATUS_COLORS[status+1] # type: ignore
+
+def map_binary_status_to_color(binStatus: Union[Binary_status_t, bool]) -> str:
+    if type(binStatus) == Binary_status_t:
+        binStatus = map_binary_status_to_bool(binStatus) # type: ignore
+    return BINARY_STATUS_COLORS[int(binStatus)]
 
 class Statistics_t(TypedDict):
     dist_mse: float

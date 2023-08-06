@@ -76,3 +76,4 @@ FILENAME_LEADING_ZEROS = 6
 ########################################## GRAPHS #######################################
 #########################################################################################
 STATUS_COLORS = ["darkred", "indianred", "orangered", "salmon", "green", "mediumorchid", "blueviolet"]
+BINARY_STATUS_COLORS = ["red", "green"]

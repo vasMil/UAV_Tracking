@@ -27,6 +27,7 @@ class BoundingBox():
         self.img_width = img_width
         self.x_center = self.x1 + self.width/2
         self.y_center = self.y1 + self.height/2
+        self.area = self.width * self.height
         if y1 < 0 or x1 < 0:
             raise Exception(f"A BoundingBox can not have negative coordinates!")
         if img_height and y2 >= img_height:

@@ -21,6 +21,7 @@ from nets.DetectionNets import Detection_FasterRCNN
 from nets.DetectionNets import Detection_SSD
 from controller.Controller import Controller
 from controller.CheatController import CheatController
+from controller.PIDController import PIDController
 from controller.KalmanFilter import KalmanFilter
 from models.FrameInfo import EstimatedFrameInfo
 
@@ -44,12 +45,13 @@ class EgoUAV(UAV):
         # self.net.load("nets/checkpoints/rcnn100.checkpoint")
         self.net = Detection_SSD()
         self.net.load("nets/checkpoints/ssd/ssd250.checkpoint")
-        self.controller = Controller(vel_magn=vel_magn,
-                                     dt=(1/inference_freq_Hz),
-                                     weight_vel=weight_vel,
-                                     filter_type=filter_type,
-                                     motion_model=motion_model,
-                                     use_pepper_filter=use_pepper_filter)
+        # self.controller = Controller(vel_magn=vel_magn,
+        #                              dt=(1/inference_freq_Hz),
+        #                              weight_vel=weight_vel,
+        #                              filter_type=filter_type,
+        #                              motion_model=motion_model,
+        #                              use_pepper_filter=use_pepper_filter)
+        self.controller = PIDController(100, 1, 50,)
 
     def _getImage(self,
                   view_mode: bool = False,
@@ -263,9 +265,10 @@ class EgoUAV(UAV):
         pitch_roll_yaw_deg = np.array(orient)
         current_pos = self.getMultirotorState().kinematics_estimated.position
         current_pos = np.expand_dims(current_pos.to_numpy_array(), axis=1)
-        velocity, yaw_deg, est_frame_info = self.controller.step(offset=offset,
-                                                                 pitch_roll_yaw_deg=pitch_roll_yaw_deg,
-                                                                 ego_pos=current_pos)
+        # velocity, yaw_deg, est_frame_info = self.controller.step(offset=offset,
+        #                                                          pitch_roll_yaw_deg=pitch_roll_yaw_deg,
+        #                                                          ego_pos=current_pos)
+        velocity, yaw_deg, est_frame_info = self.controller.step(offset, pitch_roll_yaw_deg, current_pos)
         self.lastAction = self.moveByVelocityAsync(*(velocity.squeeze()),
                                                    duration=dt,
                                                    yaw_mode=airsim.YawMode(False, yaw_deg)
@@ -273,42 +276,42 @@ class EgoUAV(UAV):
         est_frame_info["still_tracking"] = (bbox is not None)
         return self.lastAction, est_frame_info
 
-    def advanceUsingFilter(self, dt: float) -> Tuple[Future, EstimatedFrameInfo]:
-        """
-        Use this function to predict the position of the target.
-        It advances the controller without requiring any kind of measurement.
+    # def advanceUsingFilter(self, dt: float) -> Tuple[Future, EstimatedFrameInfo]:
+    #     """
+    #     Use this function to predict the position of the target.
+    #     It advances the controller without requiring any kind of measurement.
 
-        If the controller utilizes a Kalman Filter, this will be a prediction,
-        otherwise (i.e. there is no filter), the EgoUAV will continue with the same
-        yaw_angle and the same velocity.
+    #     If the controller utilizes a Kalman Filter, this will be a prediction,
+    #     otherwise (i.e. there is no filter), the EgoUAV will continue with the same
+    #     yaw_angle and the same velocity.
 
-        Args:
-        - dt: The amount of (simulation) time that has passed from previous advance 
-        on the controller.
+    #     Args:
+    #     - dt: The amount of (simulation) time that has passed from previous advance 
+    #     on the controller.
 
-        Returns:
-        A Tuple with:
-        - The Future returned by AirSim
-        - An EstimatedFrameInfo object, that contains estimations of target's
-        velocity and target's position etc. (If available)
-        """
-        if not isinstance(self.controller.filter, KalmanFilter):
-            raise Exception(f"There is no KF to support advanceUsingFilter: self.controller.filter is of type {type(self.controller.filter)}")
-        current_pos = np.expand_dims(self.getMultirotorState()
-                                     .kinematics_estimated
-                                     .position
-                                     .to_numpy_array(),
-                                     axis=1
-        )
+    #     Returns:
+    #     A Tuple with:
+    #     - The Future returned by AirSim
+    #     - An EstimatedFrameInfo object, that contains estimations of target's
+    #     velocity and target's position etc. (If available)
+    #     """
+    #     if not isinstance(self.controller.filter, KalmanFilter):
+    #         raise Exception(f"There is no KF to support advanceUsingFilter: self.controller.filter is of type {type(self.controller.filter)}")
+    #     current_pos = np.expand_dims(self.getMultirotorState()
+    #                                  .kinematics_estimated
+    #                                  .position
+    #                                  .to_numpy_array(),
+    #                                  axis=1
+    #     )
 
-        velocity, yaw_deg, est_frame_info = self.controller.step(offset=None,
-                                                                 pitch_roll_yaw_deg=np.array([0, 0, 0]),
-                                                                 ego_pos=current_pos
-                                                            )
+    #     velocity, yaw_deg, est_frame_info = self.controller.step(offset=None,
+    #                                                              pitch_roll_yaw_deg=np.array([0, 0, 0]),
+    #                                                              ego_pos=current_pos
+    #                                                         )
 
-        self.lastAction = self.moveByVelocityAsync(*(velocity.squeeze()),
-                                                   duration=dt,
-                                                   yaw_mode=airsim.YawMode(False, yaw_deg)
-        )
+    #     self.lastAction = self.moveByVelocityAsync(*(velocity.squeeze()),
+    #                                                duration=dt,
+    #                                                yaw_mode=airsim.YawMode(False, yaw_deg)
+    #     )
         
-        return self.lastAction, est_frame_info
+    #     return self.lastAction, est_frame_info

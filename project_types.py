@@ -70,7 +70,7 @@ def map_binary_status_to_color(binStatus: Union[Binary_status_t, bool]) -> str:
     return BINARY_STATUS_COLORS[int(binStatus)]
 
 class Statistics_t(TypedDict):
-    dist_mse: float
+    dist_mse: Optional[float]
     lead_vel_mse: Optional[float]
     avg_true_dist: float
 
@@ -92,7 +92,7 @@ class ExtendedCoSimulatorConfig_t(TypedDict):
     max_time_lead_is_lost_s: int
     status: Status_t
     frame_count: int
-    dist_mse: float
+    dist_mse: Optional[float]
     lead_vel_mse: Optional[float]
     avg_true_dist: float
     use_gimbal: Gimbal_t

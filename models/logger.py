@@ -433,7 +433,7 @@ class Logger:
                 lead_vel_meas_cnt += 1
 
         return {
-                "dist_mse": dist_mse/dist_meas_cnt,
+                "dist_mse": dist_mse/dist_meas_cnt if dist_meas_cnt else None,
                 "lead_vel_mse": lead_vel_mse/lead_vel_meas_cnt if lead_vel_mse else None,
                 "avg_true_dist": avg_true_dist/n
                }

@@ -68,7 +68,7 @@ class Logger:
         self.setup_file = f"{self.parent_folder}/setup.txt"
         self.config_file = f"{self.parent_folder}/config.json"
         self.video_path = f"{self.parent_folder}/output.mp4"
-        os.makedirs(self.images_path)
+        os.makedirs(self.images_path if self.keep_frames else self.parent_folder)
 
         # Lists to preserve information in
         self.info_per_frame: List[GroundTruthFrameInfo] = []

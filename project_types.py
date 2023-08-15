@@ -16,7 +16,7 @@ if EGO_UAV_NAME != "EgoUAV" or LEADING_UAV_NAME != "LeadingUAV":
 
 Filter_t = Literal["KF", "None"]
 Motion_model_t = Literal["CA", "CV"]
-Path_version_t = Literal["v0", "v1", "v2", "str8line"]
+Path_version_t = Literal["v0", "v1", "v2", "str8line", "rightline", "upline"]
 Movement_t = Literal["Random", "Path"]
 class Gimbal_t(TypedDict):
     pitch: bool

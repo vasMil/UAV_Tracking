@@ -1,14 +1,21 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Literal
 import math
 
 import numpy as np
 
 from constants import EPS
+from constants import EPS,\
+    FOCAL_LENGTH_X, FOCAL_LENGTH_Y,\
+    PAWN_SIZE_X, PAWN_SIZE_Y, PAWN_SIZE_Z,\
+    IMG_HEIGHT, IMG_WIDTH,\
+    HORIZ_FOV, VERT_FOV,\
+    CAMERA_OFFSET_X
 from project_types import Filter_t, Motion_model_t
 from controller.KalmanFilter import KalmanFilter
 from controller.PepperFilter import PepperFilter
 from utils.operations import vector_transformation
 from models.FrameInfo import EstimatedFrameInfo
+from models.BoundingBox import BoundingBox
 
 class Controller():
     """
@@ -67,6 +74,148 @@ class Controller():
                                        motion_model=motion_model,
                                        forget_factor_a=1.01)
 
+    def _get_y_distance(self, x_distance: float, bbox: BoundingBox, mode: Literal["focal", "mpp", "fix_focal", "fix_mpp"]) -> float:
+        """
+        This function will calculate the distance of the object, on the y axis.
+        We introduce this function, since we have not yet decided, which is the best method
+        to use in order to derive the y axis distance of the object.
+        The best performing mode is: "mpp".
+
+        The modes:
+        - focal, it is proposed at https://github.com/microsoft/AirSim/issues/1907.
+                 it uses the focal length of the camera in order to retrieve the distance
+
+        - mpp, stands for meters per pixel. I think it is logical to consider that if we devide the
+               distance the image captures along the horizontal axis, in meters, with the width in pixels
+               of the image, the result would be a number with units m/px. This may then be multiplied with
+               the distance between the center of the image and the bbox's center, in pixels.
+               This way we "map" the pixel distance to meters.
+
+        - fix_focal, performs a fix to the center of the bounding box and the utilizes the focal_length
+                     formula. I think this fix should be useful, when the object is not perpendicular to
+                     the image, the height of the bounding box, which is used to find the y distance is
+                     larger than what it should be.
+
+        - fix_mpp, performs the same fix as above and uses mpp to derive the y distance.
+        """
+        if mode.split('_')[0] == "fix":
+            mode2 = mode.split('_')[1]
+            # Perform a small fix:
+            # This will help, when the UAV is not perpendicular
+            # to the image, thus the width of the bounding box is larger than the expected one.
+            # That is because more of the front of the UAV (3D object) is visible.
+            # If the leadingUAV is on the left of the egoUAV, then the UAV's back is located at the left
+            # side of the bounding box. Since we may calculate the expected width of the bounding box, for
+            # a given offset.x_val, we can estimate the center of the bounding box, if the UAV was
+            # perpendicular to the image, by offseting the x1 coordinate of the predicted bounding box
+            # by expected_width/2.
+            # The same logic may be applied when the leadingUAV is on the right of egoUAV.
+            expected_bbox_width_px = FOCAL_LENGTH_X * PAWN_SIZE_X / x_distance
+
+            if bbox.x2 < IMG_WIDTH/2: # The leadingUAV is at the left of the egoUAV
+                bbox_fixed_center_y = bbox.x1 + expected_bbox_width_px/2
+            elif bbox.x1 > IMG_WIDTH/2:
+                bbox_fixed_center_y = bbox.x2 - expected_bbox_width_px/2
+            else:
+                bbox_fixed_center_y = bbox.x_center
+
+            y_box_displacement = bbox_fixed_center_y - IMG_WIDTH/2
+        else:
+            mode2 = mode
+            y_box_displacement = bbox.x_center - IMG_WIDTH/2
+
+        if mode2 == "focal":
+            return y_box_displacement * x_distance / FOCAL_LENGTH_X
+
+        if mode2 == "mpp":
+            img_width_meters = 2 * x_distance / math.tan((math.pi - HORIZ_FOV)/2)
+            return y_box_displacement * (img_width_meters / IMG_WIDTH)
+
+        raise ValueError("_get_z_distance: Invalid mode!")
+
+    def _get_z_distance(self, x_distance: float, bbox: BoundingBox, mode: Literal["focal", "mpp", "fix_focal", "fix_mpp"]) -> float:
+        """
+        This function will calculate the distance of the object, on the z axis.
+        We introduce this function, since we have not yet decided, which is the best method
+        to use in order to derive the z axis distance of the object.
+        The best performing mode is: "focal_length".
+
+        The modes:
+        - focal, it is proposed at https://github.com/microsoft/AirSim/issues/1907.
+                        it uses the focal length of the camera in order to retrieve the distance
+
+        - mpp, stands for meters per pixel. I think it is logical to consider that if we devide the
+            distance the image captures along the vertical axis, in meters, with the height in pixels
+            of the image, the result would be a number with units m/px. This may then be multiplied with
+            the distance between the center of the image and the bbox's center, in pixels.
+            This way we "map" the pixel distance to meters.
+
+        - fix_focal, performs a fix to the center of the bounding box and the utilizes the focal_length
+                    formula. I think this fix should be useful, when the object is not perpendicular to
+                    the image, the height of the bounding box, which is used to find the z distance is
+                    larger than what it should be.
+
+        - fix_mpp, performs the same fix as above and uses mpp to derive the z distance.
+        """
+        if mode.split('_')[0] == "fix":
+            mode2 = mode.split('_')[1]
+            # Perform a small fix: (This seems to have a negative effect on the error)
+            # This will help, when the UAV is not perpendicular
+            # to the image, thus the height of the bounding box is larger than the expected one.
+            # That is because more of the front of the UAV (3D object) is visible.
+            # If the egoUAV is lower than the leadingUAV, then the UAV's back is located at the top of
+            # the bounding box. Since we may calculate the expected height of the bounding box, for
+            # a given offset.x_val, we can estimate the center of the bounding box, if the UAV was
+            # perpendicular to the image, by offseting the y1 coordinate of the predicted bounding box
+            # by expected_height/2.
+            # The same logic may be applied to cases aswell.
+            expected_bbox_height_px = FOCAL_LENGTH_Y* PAWN_SIZE_Z / x_distance
+
+            if bbox.y2 < IMG_HEIGHT/2: # The leadingUAV is higher than the egoUAV
+                bbox_fixed_center_z = bbox.y1 + expected_bbox_height_px/2
+            elif bbox.y1 > IMG_HEIGHT/2:
+                bbox_fixed_center_z = bbox.y2 - expected_bbox_height_px/2
+            else:
+                bbox_fixed_center_z = bbox.y_center
+
+            z_box_displacement = bbox_fixed_center_z - IMG_HEIGHT/2
+        else:
+            mode2 = mode
+            z_box_displacement = bbox.y_center - IMG_HEIGHT/2
+
+        if mode2 == "focal":
+            return z_box_displacement * x_distance / FOCAL_LENGTH_Y
+
+        if mode2 == "mpp":
+            img_height_meters = 2 * x_distance / math.tan((math.pi - VERT_FOV)/2)
+            return z_box_displacement * (img_height_meters / IMG_HEIGHT)
+
+        raise ValueError("_get_z_distance: Invalid mode!")
+
+    def bbox_to_offset(self, bbox: Optional[BoundingBox]) -> Optional[np.ndarray]:
+        """
+        Args:
+        bbox: The bbox predicted using a NN, on EgoUAV's image, or None.
+
+        Returns:
+        A (3x1) column vector containing the estimated distance on the (x, y, z) axis,
+        between the EgoUAV and the target.
+        If the bbox is None, all values will be zero.
+        """
+        if not bbox:
+            return None
+        dist = np.zeros([3,1])
+        x_offset = FOCAL_LENGTH_X * PAWN_SIZE_Y / bbox.width
+        dist[0] = x_offset
+        dist[1] = self._get_y_distance(x_offset, bbox, "focal")
+        dist[2] = self._get_z_distance(x_offset, bbox, "focal")
+
+        # The distance on the x axis so far, is from EgoUAV's camera,
+        # to the back side of the LeadingUAV. We require this distance to be
+        # from one center to the other.
+        dist[0] += (CAMERA_OFFSET_X + PAWN_SIZE_X/2)
+        return dist
+
     def offset_to_velocity(self, offset: np.ndarray) -> np.ndarray:
         # Multiply with the weights
         offset = np.multiply(offset.T, self.weight_vel).T
@@ -122,19 +271,19 @@ class Controller():
         return angle_deg
 
     def step(self,
-             offset: Optional[np.ndarray],
+             bbox: Optional[BoundingBox],
              pitch_roll_yaw_deg: np.ndarray,
              ego_pos: np.ndarray
         ) -> Tuple[np.ndarray, float, EstimatedFrameInfo]:
         """
         Calculates a velocity, using the target velocity found in config and
-        the offset from the target position passed as argument.
+        the offset derived from the bbox.
         If a filter is used ("KF") it will also cleanup the measurement if there
         is one, or predict the position of the LeadingUAV and use this to calculate
         the target velocity for the egoUAV.
 
         Args:
-        - offset: A 3x1 column vector with the offset from EgoUAV to LeadingUAV.
+        - bbox: The detected bbox from EgoUAV's perspective.
         - pitch_roll_yaw_deg: A numpy array with the pirch, roll and yaw of the \
         EgoUAV at the time of measurement.
         - dt: The time interval between two consecutive calls.
@@ -144,9 +293,9 @@ class Controller():
 
         Returns:
         A Tuple containing:
-        - A 3x1 column vector with the target velocity for the EgoUAV
+        - A 3x1 column vector with the target velocity for the EgoUAV.
         - A yaw target angle (in degrees), so the EgoUAV rotates at an \
-        angle at which the LeadingUAV is at the center of it's frame
+        angle at which the LeadingUAV is at the center of it's frame.
         - A TypedDict (EstimatedFrameInfo) containing all the estimated values \
         that we want to log.
         """
@@ -160,6 +309,7 @@ class Controller():
             "egoUAV_position": None,
             "still_tracking": None
         }
+        offset = self.bbox_to_offset(bbox)
 
         # Subtract the distance covered by the EgoUAV, while waiting
         # for the inference to finish and/or the controller to advance

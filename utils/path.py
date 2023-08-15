@@ -127,11 +127,15 @@ def create_np_path(start_pos: np.ndarray,
     path_v2 += get_points_on_sinusoid(rotational_velocity_y=2*math.pi, rotational_velocity_z=4*math.pi)
     path_v2 += create_linear_samples([np.array([20., 0., 0.])], 100)
 
-    str8line = [start_pos] + create_linear_samples([np.array([100., 0., 0.])], 100)
+    str8line = [start_pos] + create_linear_samples([np.array([20., 0., 0.])], 100)
+    rightline = [start_pos] + create_linear_samples([np.array([0., 20., 0.])], 100)
+    upline = [start_pos] + create_linear_samples([np.array([0., 0., -20.])], 100)
     return accumulate_points(path_v0 if version == "v0" else\
                              path_v1 if version == "v1" else\
                              path_v2 if version == "v2" else\
-                             str8line)
+                             str8line if version == "str8line" else
+                             rightline if version == "rightline" else
+                             upline)
 
 def get_path(start_pos: airsim.Vector3r,
              version: Path_version_t = "v2"

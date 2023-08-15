@@ -80,7 +80,7 @@ class DefaultCoSimulatorConfig():
                  motion_model: Motion_model_t = "CA",
                  use_pepper_filter: bool = True,
                  leadingUAV_update_vel_interval_s: int = 2,
-                 max_time_lead_is_lost_s: int = 2,
+                 max_time_lead_is_lost_s: int = 20,
                  max_allowed_uav_distance_m: int = 15
             ) -> None:
         # The magnitude of the velocity vector (in 3D space)

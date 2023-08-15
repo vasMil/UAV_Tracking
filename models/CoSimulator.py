@@ -219,7 +219,8 @@ class CoSimulator():
         return True if bbox else False
 
     def hook_filter_advance_only(self):
-        self.egoUAV.advanceUsingFilter(dt=(1/self.config.filter_freq_Hz))
+        pass
+        # self.egoUAV.advanceUsingFilter(dt=(1/self.config.filter_freq_Hz))
 
     def export_graphs(self):
         gl = GraphLogs(frame_info=self.logger.updated_info_per_frame)

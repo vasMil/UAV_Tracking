@@ -1,9 +1,10 @@
-from typing import Tuple, List, TypedDict
+from typing import List, TypedDict
 
 import torch
 import torch.nn as nn
 import torch_pruning as tp
-from torchvision.models.detection.ssd import ssd300_vgg16
+
+from nets.DetectionNets import Detection_SSD
 
 class Pruning_layer_t(TypedDict):
     sparsity: float
@@ -12,24 +13,31 @@ class Pruning_layer_t(TypedDict):
 #############################
 # Prepare model for pruning #
 #############################
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = ssd300_vgg16(pretrained=True, trainable_backbone_layers=5)
-model.to(device=device).eval()
+ssd = Detection_SSD(root_train_dir="./data/empty_map/train",
+                    json_train_labels="./data/empty_map/train/bboxes.json",
+                    root_test_dir="./data/empty_map/test",
+                    json_test_labels="./data/empty_map/test/bboxes.json",
+                    checkpoint_path="./nets/checkpoints/ssd/ssd250.checkpoint"
+)
+model = ssd.model
+model.eval()
 # Make all layers trainable, so tracing succeeds
 for p in model.parameters():
     p.requires_grad_(True)
 
 # Statistics
 ori_size = tp.utils.count_params(model)
+ori_map = ssd.mAP_dicts[-1][1]
+ssd.get_inference_frequency(100, 100, True)
 
 # Pruning utilities
-example_inputs = torch.rand(1,3,144,256).to(device=device)
+example_inputs = torch.rand(1,3,144,256).to(device=ssd.device)
 importance = tp.importance.MagnitudeImportance(p=1)
 
 # Define the layers (list of modules) to prune
 pruning_layers: List[Pruning_layer_t] = [
     {
-        "sparsity": 0.5,
+        "sparsity": 0.1,
         "module_names": [
             "backbone.features.0",
             "backbone.features.2",
@@ -44,7 +52,7 @@ pruning_layers: List[Pruning_layer_t] = [
         ]
     },
     {
-        "sparsity": 0.5,
+        "sparsity": 0.8,
         "module_names": [
             "backbone.features.21",
             "backbone.extra.0.1",
@@ -55,7 +63,7 @@ pruning_layers: List[Pruning_layer_t] = [
         ]
     },
     {
-        "sparsity": 0.5,
+        "sparsity": 0.8,
         "module_names": [
             "backbone.extra.0.7.3",
             "backbone.extra.1.0",
@@ -63,7 +71,7 @@ pruning_layers: List[Pruning_layer_t] = [
         ]
     },
     {
-        "sparsity": 0.5,
+        "sparsity": 0.9,
         "module_names": [
             "backbone.extra.1.2",
             "backbone.extra.2.0",
@@ -76,7 +84,9 @@ pruning_layers: List[Pruning_layer_t] = [
     }
 ]
 
-# Prune - layerwise
+#####################
+# Prune - layerwise #
+#####################
 for i, pruning_layer in enumerate(pruning_layers):
     print(f"\nPruning layer {i}...")
 
@@ -91,8 +101,7 @@ for i, pruning_layer in enumerate(pruning_layers):
         if isinstance(module, nn.Conv2d) and module not in layer_modules:
             ignored_layers.append(module)
 
-    
-    pruner = tp.pruner.MagnitudePruner(
+    tp.pruner.MagnitudePruner(
         model,
         example_inputs=example_inputs,
         importance=importance,
@@ -100,9 +109,11 @@ for i, pruning_layer in enumerate(pruning_layers):
         ch_sparsity=pruning_layer["sparsity"],
         global_pruning=False,
         ignored_layers=ignored_layers,
-    )
-    pruner.step()
+    ).step()
 
+    ###############
+    # Testing ... #
+    ###############
     with torch.no_grad():
         out = model(example_inputs)
 
@@ -115,3 +126,14 @@ for i, pruning_layer in enumerate(pruning_layers):
 
     params_after_prune = tp.utils.count_params(model)
     print("Params: %s => %s" % (ori_size, params_after_prune))
+
+##############
+# Finetuning #
+##############
+ssd.train(20)
+pruned_map = ssd.calculate_metrics(False)
+print("Before Pruning: --------------------------------------------------------")
+print(ori_map)
+print("After Pruning: ---------------------------------------------------------")
+print(pruned_map)
+ssd.get_inference_frequency(100, 100, True)

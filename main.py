@@ -1,56 +1,45 @@
-import traceback
-import shutil
+import torch
+import torch.backends.cudnn
+from torch_pruning import GroupNormPruner
+from torch_pruning.pruner.importance import GroupNormImportance
 
-from tqdm import tqdm
-
-from config import DefaultCoSimulatorConfig
-from models.CoSimulator import CoSimulator
-from utils.recordings.plots import plots_for_path, plot_success_rate
+from nets.DetectionNets import Detection_SSD
 
 if __name__ == '__main__':
-    num_runs = 5
-    for velocity in tqdm([6, 7, 8], "Velocity"):
-        for f in tqdm(range(5, 36, 1), "Frequency"):
-            run_cnt = 0
-            while run_cnt < num_runs:
-                config = DefaultCoSimulatorConfig(sim_fps=f,
-                                                  camera_fps=f,
-                                                  infer_freq_Hz=f,
-                                                  filter_freq_Hz=f,
-                                                  uav_velocity=velocity)
-                co_sim = CoSimulator(config=config, log_folder=f"recordings/freq_tests/path_v1/vel{velocity}_freq5_to_35Hz_5runs",
-                                     movement="Path",
-                                     path_version="v1",
-                                     display_terminal_progress=False,
-                                     keep_frames=False,
-                                     get_video=False)
-                try:
-                    co_sim.start()
-                    while not co_sim.done and co_sim.status == 0:
-                        co_sim.advance()
-                except Exception:
-                    co_sim.finalize("Error")
-                    print("There was an error, writing setup file and releasing AirSim...")
-                    print("\n" + "*"*10 + " THE ERROR MESSAGE " + "*"*10)
-                    traceback.print_exc()
-                    shutil.rmtree(co_sim.logger.parent_folder)
-                    run_cnt -= 1
-                finally:
-                    co_sim.finalize("Time's up")
-                    run_cnt += 1
- 
-        plots_for_path(folder_path=f"recordings/freq_tests/path_v1/vel{velocity}_freq5_to_35Hz_5runs",
-                    dist_filename=f"dist_{velocity}.png",
-                    time_filename=f"time_{velocity}.png",
-                    constant_key="uav_velocity",
-                    constant_value=velocity,
-                    mode="binary",
-                    path_version="v1",
-                    nn_name="SSD"
-        )
-        plot_success_rate(folder_path=f"recordings/freq_tests/path_v1/vel{velocity}_freq5_to_35Hz_5runs",
-                        out_filename=f"recordings/freq_tests/path_v1/vel{velocity}_freq5_to_35Hz_5runs/success_rate.png",
-                        path_version="v1",
-                        constant_key="uav_velocity",
-                        constant_value=velocity
-        )
+    torch.backends.cudnn.benchmark = True
+
+    # Train SSD using sparse the training technique
+    # introduced in DepGraph: Towards Any Structural Pruning
+    ssd = Detection_SSD(root_train_dir="./data/empty_map/train",
+                        json_train_labels="./data/empty_map/train/bboxes.json",
+                        root_test_dir="./data/empty_map/test",
+                        json_test_labels="./data/empty_map/test/bboxes.json"
+    )
+
+    ignored_layers = [ssd.model.head]
+
+    pruner = GroupNormPruner(
+        ssd.model,
+        example_inputs=torch.rand([1,3,144,256]).to(device=ssd.device),
+        importance=GroupNormImportance(p=2),
+        ignored_layers=ignored_layers
+    )
+
+    ssd.train(100, pruner.regularize)
+    ssd.calculate_metrics(True)
+    ssd.save("nets/checkpoints/prunable_ssd/prunable_ssd100.checkpoint")
+    ssd.train(50, pruner.regularize)
+    ssd.calculate_metrics(True)
+    ssd.save("nets/checkpoints/prunable_ssd/prunable_ssd150.checkpoint")
+    ssd.train(50, pruner.regularize)
+    ssd.calculate_metrics(True)
+    ssd.save("nets/checkpoints/prunable_ssd/prunable_ssd200.checkpoint")
+    for i in range(0,100,10):
+        ssd.train(10, pruner.regularize)
+        ssd.calculate_metrics(True)
+        ssd.save(f"nets/checkpoints/prunable_ssd/prunable_ssd{200+(i+10)}.checkpoint")
+        ssd.plot_losses("nets/checkpoints/prunable_ssd/")
+
+    ssd.plot_mAPs("nets/checkpoints/prunable_ssd/map_50.png", "map_50")
+    ssd.plot_mAPs("nets/checkpoints/prunable_ssd/map_75.png", "map_75")
+    ssd.plot_mAPs("nets/checkpoints/prunable_ssd/map_95.png", "map_95")

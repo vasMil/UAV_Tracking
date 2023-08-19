@@ -50,6 +50,7 @@ class Detection_SSD(DetectionNetBench):
         }
         model = ssd300_vgg16(weights_backbone=VGG16_Weights.DEFAULT,
                              num_classes=2,
+                             trainable_backbone_layers=5,
                              **defaults)
         config = DefaultTrainingConfig()
         config.default_batch_size = 32

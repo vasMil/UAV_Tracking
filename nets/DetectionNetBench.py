@@ -1,6 +1,6 @@
 import math
 import time
-from typing import Dict, Tuple, List, TypedDict, Mapping, Any, Optional
+from typing import Dict, Tuple, List, Optional, Callable
 import copy
 import warnings
 
@@ -85,7 +85,7 @@ class DetectionNetBench():
         """
         self.mAP = MeanAveragePrecision(box_format='xyxy',
                                         iou_type='bbox',
-                                        iou_thresholds=[0.5, 0.75])
+                                        iou_thresholds=[0.5, 0.75, 0.8, 0.85, 0.9, 0.95])
         self.mAP_dicts: List[Tuple[int, Dict[str, float]]] = []
         self.losses_plot_ylabel = config.losses_plot_ylabel
 
@@ -288,7 +288,9 @@ class DetectionNetBench():
                 ax.add_patch(rect)
         plt.show()
 
-    def train(self, num_epochs: int) -> None:
+    def train(self, num_epochs: int,
+              sparse_training_regularizer: Optional[Callable[[nn.Module], None]] = None
+    ) -> None:
         """
         Trains the model using the data specified at object initialization.
         Implementation is based on: 
@@ -379,6 +381,8 @@ class DetectionNetBench():
                         loss: torch.Tensor = sum(loss for loss in loss_dict.values()) # type: ignore
                         if phase == "train":
                             loss.backward()
+                            if sparse_training_regularizer:
+                                sparse_training_regularizer(self.model)
                             self.optimizer.step()
                             if self.scheduler: self.scheduler.step()
                             if self.prof: self.prof.step()
@@ -416,7 +420,7 @@ class DetectionNetBench():
         print(f'Total training time {self.training_time // 60:.0f}m {time_elapsed % 60:.0f}s')
 
     @torch.no_grad()
-    def calculate_metrics(self):
+    def calculate_metrics(self, preserve_result: bool = True) -> Dict[int, Dict[str, float]]:
         if not self.can_test:
             raise Exception("Paths required for testing have not been specified")
 
@@ -451,7 +455,10 @@ class DetectionNetBench():
                 mAP_dict.update({key: dev_mAP_dict[key].to(torch.device("cpu"))})
             else:
                 mAP_dict.update({key: value})
-        self.mAP_dicts.append((self.epoch, mAP_dict,))
+
+        if preserve_result:
+            self.mAP_dicts.append((self.epoch, mAP_dict,))
+        return mAP_dict
 
     @torch.no_grad()
     def eval(self,

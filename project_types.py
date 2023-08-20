@@ -129,3 +129,12 @@ class Checkpoint_t(TypedDict):
     # List[(Epoch: int, mAP: Dict[str, float],)]
     mAPs: List[Tuple[int, Dict[str, float]]]
     training_time: float
+
+class Infer_freqs_t(TypedDict):
+    is_cudnn_benchmanrk_on: bool
+    num_tests: int
+    num_warmup: int
+    model_first_meas_ns: float
+    model_avg_freq_Hz: float
+    eval_first_meas_ns: float
+    eval_avg_freq_Hz: float

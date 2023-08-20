@@ -1,4 +1,5 @@
 from typing import List, TypedDict
+from pprint import pprint
 
 import torch
 import torch.nn as nn
@@ -17,7 +18,7 @@ ssd = Detection_SSD(root_train_dir="./data/empty_map/train",
                     json_train_labels="./data/empty_map/train/bboxes.json",
                     root_test_dir="./data/empty_map/test",
                     json_test_labels="./data/empty_map/test/bboxes.json",
-                    checkpoint_path="./nets/checkpoints/ssd/ssd250.checkpoint"
+                    checkpoint_path="./nets/checkpoints/prunable_ssd/prunable_ssd100.checkpoint"
 )
 model = ssd.model
 model.eval()
@@ -26,9 +27,9 @@ for p in model.parameters():
     p.requires_grad_(True)
 
 # Statistics
-ori_size = tp.utils.count_params(model)
-ori_map = ssd.mAP_dicts[-1][1]
-ssd.get_inference_frequency(100, 100, True)
+orig_params = tp.utils.count_params(model)
+orig_map = ssd.mAP_dicts[-1][1]
+orig_fps = ssd.get_inference_frequency(100, 100, True)
 
 # Pruning utilities
 example_inputs = torch.rand(1,3,144,256).to(device=ssd.device)
@@ -124,16 +125,23 @@ for i, pruning_layer in enumerate(pruning_layers):
         else:
             print("Inference output shape:", out.shape)
 
-    params_after_prune = tp.utils.count_params(model)
-    print("Params: %s => %s" % (ori_size, params_after_prune))
+    pruned_params = tp.utils.count_params(model)
+    print("Params: %s => %s" % (orig_params, pruned_params))
 
 ##############
 # Finetuning #
 ##############
 ssd.train(20)
-pruned_map = ssd.calculate_metrics(False)
+pruned_map = ssd.calculate_metrics(True)
+ssd.save("nets/checkpoints/pruned_ssd/orig100_finetune20.checkpoint")
+
+pruned_fps = ssd.get_inference_frequency(1000, 100, True)
+pruned_params = tp.utils.count_params(model)
 print("Before Pruning: --------------------------------------------------------")
-print(ori_map)
+print(f"Number of parameters: {orig_params}")
+pprint(orig_map)
+pprint(orig_fps)
 print("After Pruning: ---------------------------------------------------------")
-print(pruned_map)
-ssd.get_inference_frequency(100, 100, True)
+print(f"Number of parameters: {pruned_params}")
+pprint(pruned_map)
+pprint(pruned_fps)

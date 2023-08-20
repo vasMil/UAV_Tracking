@@ -18,7 +18,7 @@ from torchmetrics.detection import MeanAveragePrecision
 from config import DefaultTrainingConfig
 from models.BoundingBox import BoundingBoxDataset, BoundingBox
 from project_types import BoundBoxDataset_Item, Bbox_dict_for_nn_t,\
-    Losses_dict_t, Checkpoint_t
+    Losses_dict_t, Checkpoint_t, Infer_freqs_t
 
 class DetectionNetBench():
     """
@@ -420,7 +420,7 @@ class DetectionNetBench():
         print(f'Total training time {self.training_time // 60:.0f}m {time_elapsed % 60:.0f}s')
 
     @torch.no_grad()
-    def calculate_metrics(self, preserve_result: bool = True) -> Dict[int, Dict[str, float]]:
+    def calculate_metrics(self, preserve_result: bool) -> Dict[int, Dict[str, float]]:
         if not self.can_test:
             raise Exception("Paths required for testing have not been specified")
 
@@ -569,7 +569,7 @@ class DetectionNetBench():
                                 num_tests: int,
                                 warmup: int,
                                 cudnn_benchmark: bool = False
-        ) -> None:
+        ) -> Infer_freqs_t:
         """
         Times some inferences in order to calculate the frequency the NN it hosts
         operates at.
@@ -589,11 +589,22 @@ class DetectionNetBench():
         - num_tests: The number of inferences to run in order to determine the average frequency
         - warmup: The amount of warmup inferences to execute before starting the timer
         - cudnn_benchmark: Whether to use torch.backends.cudnn.benchmark or not
+
+        Returns:
+        A dictionary (TypedDict with the name Infer_freq_t).
         """
         if not self.can_test:
             raise Exception("Paths required for calculating the inference frequency\
                              have not been specified")
-        
+        infer_reqs: Infer_freqs_t = {
+            "is_cudnn_benchmanrk_on": cudnn_benchmark,
+            "num_tests": num_tests,
+            "num_warmup": warmup,
+            "model_first_meas_ns": 0.,
+            "model_avg_freq_Hz": 0.,
+            "eval_first_meas_ns": 0.,
+            "eval_avg_freq_Hz": 0.
+        }
         # Create a dataloader to use in order to fetch images
         dataset = BoundingBoxDataset(self.root_dirs["val"], self.json_labels["val"]) # type: ignore
         dataloader = DataLoader(dataset=dataset, shuffle=True,
@@ -610,31 +621,33 @@ class DetectionNetBench():
                       threshold=0)
         
         # Perform the evaluation using self.model()
-        start = time.time()
+        start = time.time_ns()
         self.model.eval()
         first: float = 0
         for i in range(num_tests):
             images, _ = next(iter(dataloader))
             dev_images = [img.to(self.device) for img in images]
             self.model(dev_images)
-            if i == 0: first = time.time()
+            if i == 0: first = time.time_ns()
 
-        end = time.time()
-        # Calculate the average and report to the terminal
-        print(f"The first self.model() required: {first-start} s")
-        print(f"self.model() operates on average at: {num_tests/(end-start)} Hz")
+        end = time.time_ns()
+        # Calculate the average
+        infer_reqs["model_first_meas_ns"] = first-start
+        infer_reqs["model_avg_freq_Hz"] = num_tests/((end-start)*1e-9)
 
         # Perform the evaluation using self.eval()
-        start = time.time()
+        start = time.time_ns()
         first: float = 0
         for i in range(num_tests):
             images, _ = next(iter(dataloader))
             self.eval(image=images[0], threshold=0)
-            if i == 0: first = time.time()
-        end = time.time()
-        # Calculate the average and report to the terminal
-        print(f"The first self.eval() required: {first-start} s")
-        print(f"self.eval() operates on average at: {num_tests/(end-start)} Hz")
+            if i == 0: first = time.time_ns()
+        end = time.time_ns()
+        # Calculate the average
+        infer_reqs["eval_first_meas_ns"] = first-start
+        infer_reqs["eval_avg_freq_Hz"] = num_tests/((end-start)*1e-9)
+        
+        return infer_reqs
 
     def plot_losses(self, filename: str) -> None:
         fig, ax = plt.subplots()

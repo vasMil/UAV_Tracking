@@ -451,10 +451,9 @@ class DetectionNetBench():
         dev_mAP_dict = self.mAP.compute()
         mAP_dict = {}
         for key, value in dev_mAP_dict.items():
-            if torch.is_tensor(value) and value.device != torch.device("cpu"):
-                mAP_dict.update({key: dev_mAP_dict[key].to(torch.device("cpu"))})
-            else:
-                mAP_dict.update({key: value})
+            if torch.is_tensor(value):
+                value = value.item()
+            mAP_dict.update({key: value})
 
         if preserve_result:
             self.mAP_dicts.append((self.epoch, mAP_dict,))

@@ -56,7 +56,10 @@ class PIDController():
             "egoUAV_target_velocity": None,
             "leadingUAV_position": None,
             "leadingUAV_velocity": None,
-            "still_tracking": False
+            "still_tracking": False,
+            "extra_pid_p": None,
+            "extra_pid_i": None,
+            "extra_pid_d": None
         }
         if bbox is None:
             estInfo["egoUAV_target_velocity"] = tuple(self.prev_control.squeeze().tolist())
@@ -67,6 +70,7 @@ class PIDController():
 
         # Proportional
         proportional = np.multiply(self.Kp, error)
+        estInfo["extra_pid_p"] = tuple(proportional.squeeze().tolist())
 
         # Integrator
         self.integrator = self.integrator + (1/2) * np.multiply(self.Ki * self.dt, error + self.prev_error)
@@ -78,13 +82,17 @@ class PIDController():
             self.integrator[p_mask] = limits[p_mask]
         elif np.any(n_mask):
             self.integrator[n_mask] = -limits[n_mask]
+        estInfo["extra_pid_i"] = tuple(self.integrator.squeeze().tolist())
 
         # Derivative
         self.differentiator = np.divide(np.multiply(-2*self.Kd, ego_pos - self.prev_measurement) + np.multiply(2*self.tau - self.dt, self.differentiator),
                                         2*self.tau + self.dt)
-        control = self.clamp(proportional + self.integrator + self.differentiator)
+        estInfo["extra_pid_d"] = tuple(self.differentiator.squeeze().tolist())
         
+        # Calculate the output and clamp it's values
+        control = self.clamp(proportional + self.integrator + self.differentiator)
         estInfo["egoUAV_target_velocity"] = tuple(control.squeeze().tolist())
+
         self.prev_control = control
         self.prev_error = error
         self.prev_measurement = ego_pos

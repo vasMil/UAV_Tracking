@@ -62,13 +62,13 @@ def _plots_for_path(fig: Any,
     cbar.set_ticklabels([ustat for ustat in color_labels]) # type: ignore
 
 def plots_for_path(folder_path: str,
-                    dist_filename: str,
-                    time_filename: str,
-                    constant_key: Literal["uav_velocity", "infer_freq_Hz"],
-                    constant_value: Union[int, float],
-                    mode: Literal["all", "binary"],
-                    path_version: Path_version_t,
-                    nn_name: str
+                   dist_filename: str,
+                   time_filename: str,
+                   constant_key: Literal["uav_velocity", "infer_freq_Hz"],
+                   constant_value: Union[int, float],
+                   mode: Literal["all", "binary"],
+                   path_version: Path_version_t,
+                   nn_name: str
     ) -> None:
     folders = get_folders_in_path(folder_path)
     n = len(folders)

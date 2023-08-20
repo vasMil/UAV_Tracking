@@ -1,4 +1,4 @@
-from typing import List, Optional, Literal, Tuple, Callable
+from typing import List, Optional, Literal, Tuple, Callable, Any
 from operator import itemgetter
 import datetime, time
 import os
@@ -351,7 +351,10 @@ class Logger:
                                "leadingUAV_position": None,
                                "leadingUAV_velocity": None,
                                "egoUAV_position": None,
-                               "still_tracking": None
+                               "still_tracking": None,
+                               "extra_pid_p": None,
+                               "extra_pid_d": None,
+                               "extra_pid_i": None
                             }
         ) -> FrameInfo:
         """
@@ -403,7 +406,11 @@ class Logger:
             "extra_timestamp": sim_info["timestamp"],
             "extra_leading_orientation_quartanion": sim_info["leadingUAV_orientation_quartanion"],
             "extra_ego_orientation_quartanion": sim_info["egoUAV_orientation_quartanion"],
-            "extra_still_tracking": est_info["still_tracking"]
+            "extra_still_tracking": est_info["still_tracking"],
+
+            "extra_pid_p": est_info["extra_pid_p"],
+            "extra_pid_i": est_info["extra_pid_i"],
+            "extra_pid_d": est_info["extra_pid_d"]
         }
         return frameInfo
 
@@ -603,6 +610,54 @@ class GraphLogs:
         ax.invert_zaxis() # type: ignore
         fig.savefig(filename)
         plt.close(fig)
+
+    def plot_PID_samples(self, plot_filename: str):
+        # Extract the data
+        # Each np.array will be of shape (3 x num_of_data_points)
+        # i.e. one row for each dimension.
+        p_points = np.empty([3,0])
+        i_points = np.empty([3,0])
+        d_points = np.empty([3,0])
+        none_list = [None, None, None]
+        times = []
+        for info in self.frame_info:
+            cur_p = info["extra_pid_p"]
+            cur_i = info["extra_pid_i"]
+            cur_d = info["extra_pid_d"]
+            p_points = np.hstack([p_points, np.array(cur_p if cur_p else none_list).reshape([3,1])])
+            i_points = np.hstack([i_points, np.array(cur_i if cur_i else none_list).reshape([3,1])])
+            d_points = np.hstack([d_points, np.array(cur_d if cur_d else none_list).reshape([3,1])])
+            times.append(info["extra_timestamp"])
+        
+        for i, timestamp in enumerate(times):
+            times[i] = (timestamp - times[-1])*1e-9
+
+        fig = plt.figure(figsize=(25, 20))
+        axes: Any = fig.subplots(nrows=3, ncols=3)
+        for i in range(3):
+            axes[0, i].plot(times, p_points[i,:])
+            axes[0, i].set_xlabel("sim time (s)")
+            axes[0, i].set_ylabel("Proportional value")
+            axes[1, i].plot(times, i_points[i,:])
+            axes[1, i].set_xlabel("sim time (s)")
+            axes[1, i].set_ylabel("Integral value")
+            axes[2, i].plot(times, d_points[i,:])
+            axes[2, i].set_xlabel("sim time (s)")
+            axes[2, i].set_ylabel("Derivative value")
+
+        # Since each column for the graphs is a specific axis for the movement
+        # we should annotate each column accordingly
+        pad = 20
+        pos_args = dict(xy=(0.5, 1), xytext=(0, pad), xycoords='axes fraction', textcoords='offset points',
+                        ha='center', va='baseline')
+        font_kwargs = dict(fontfamily="monospace", fontweight="bold", fontsize=20)
+        axes[0, 0].annotate("X axis", **pos_args, **font_kwargs)
+        axes[0, 1].annotate("Y axis", **pos_args, **font_kwargs)
+        axes[0, 2].annotate("Z axis", **pos_args, **font_kwargs)
+        fig.suptitle("PID Controller outputs (not clamped)", **font_kwargs)
+        fig.savefig(plot_filename)
+        plt.close(fig)
+
 
 class TerminalProgress():
     def __init__(self,

@@ -247,6 +247,8 @@ class CoSimulator():
         gl.graph(self.config.camera_fps, graph_type="distance", axis="y", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "disty.png"))
         gl.graph(self.config.camera_fps, graph_type="distance", axis="z", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "distz.png"))
 
+        gl.plot_PID_samples(os.path.join(self.logger.parent_folder, "PIDs.png"))
+
         gl.plot_movement_3d(filename=os.path.join(self.logger.parent_folder,"movement.png"), path=self.leading_path)
 
     def finalize(self, status: Status_t):

@@ -307,7 +307,10 @@ class Controller():
             "leadingUAV_position": None,
             "leadingUAV_velocity": None,
             "egoUAV_position": None,
-            "still_tracking": None
+            "still_tracking": None,
+            "extra_pid_p": None,
+            "extra_pid_i": None,
+            "extra_pid_d": None
         }
         offset = self.bbox_to_offset(bbox)
 

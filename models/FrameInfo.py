@@ -19,6 +19,10 @@ class EstimatedFrameInfo(TypedDict):
     angle_deg: Optional[float]
     still_tracking: Optional[bool]
 
+    extra_pid_p: Optional[Tuple[float, float, float]]
+    extra_pid_i: Optional[Tuple[float, float, float]]
+    extra_pid_d: Optional[Tuple[float, float, float]]
+
 class FrameInfo(TypedDict):
     bbox_score: Optional[float]
     # LeadingUAV position
@@ -53,3 +57,7 @@ class FrameInfo(TypedDict):
     extra_leading_orientation_quartanion: Tuple[float, float, float, float]
     extra_ego_orientation_quartanion: Tuple[float, float, float, float]
     extra_still_tracking: Optional[bool]
+
+    extra_pid_p: Optional[Tuple[float, float, float]]
+    extra_pid_i: Optional[Tuple[float, float, float]]
+    extra_pid_d: Optional[Tuple[float, float, float]]

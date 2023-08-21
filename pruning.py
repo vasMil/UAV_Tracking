@@ -133,21 +133,26 @@ for i, pruning_layer in enumerate(pruning_layers):
 # Finetuning #
 ##############
 # Change the training parameters of the network, since the model
-# is now smaller (i.e. use a larger lr)
+# is now smaller (ex. use a larger lr)
 config = DefaultTrainingConfig(
     default_batch_size=64,
-    num_workers=2,
-    sgd_learning_rate=0.1,
+    sgd_learning_rate=0.001,
     scheduler_milestones=[],
     scheduler_gamma=1,
     losses_plot_ylabel=ssd.losses_plot_ylabel
 )
 ssd.reset(config)
 ssd.save_model("nets/checkpoints/pruning/ssd_pretrained/finetuning/pretrained60_sparse80.model")
-# ssd.train(20)
-pruned_map = ssd.calculate_metrics(True)
-ssd.save_checkpoint("nets/checkpoints/pruning/ssd_pretrained/finetuning/pretrained60_sparse80_finetuned20_4layers_00_05_05_05.checkpoint")
+step = 10
+for i in range(0,80,step):
+    ssd.train(10)
+    ssd.calculate_metrics(True)
+    ssd.save_checkpoint(f"./nets/checkpoints/pruning/ssd_pretrained/finetuning/pretrained60_sparse80_finetuned{i+step}_4layers_00_05_05_05.checkpoint")
+    ssd.plot_losses("./nets/checkpoints/pruning/ssd_pretrained/finetuning/losses.png")
+    ssd.plot_mAPs("./nets/checkpoints/pruning/ssd_pretrained/finetuning/map50.png", "map_50")
+    ssd.plot_mAPs("./nets/checkpoints/pruning/ssd_pretrained/finetuning/map75.png", "map_75")
 
+pruned_map = ssd.mAP_dicts[-1]
 pruned_fps = ssd.get_inference_frequency(1000, 100, True)
 pruned_params = tp.utils.count_params(model)
 print("Before Pruning: --------------------------------------------------------")

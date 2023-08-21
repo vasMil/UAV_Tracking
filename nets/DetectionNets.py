@@ -1,9 +1,7 @@
 from typing import Optional
 
-from torch import optim
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.ssd import ssd300_vgg16
-from torchvision.models import VGG16_Weights
 
 from config import DefaultTrainingConfig
 from nets.DetectionNetBench import DetectionNetBench
@@ -43,15 +41,9 @@ class Detection_SSD(DetectionNetBench):
                  json_test_labels: str = "",
                  checkpoint_path: Optional[str] = None
             ) -> None:
-        defaults = {
-            # Rescale the input in a way compatible to the backbone
-            "image_mean": [0.48235, 0.45882, 0.40784],
-            "image_std": [1.0 / 255.0, 1.0 / 255.0, 1.0 / 255.0],  # undo the 0-1 scaling of toTensor
-        }
-        model = ssd300_vgg16(weights_backbone=VGG16_Weights.DEFAULT,
+        model = ssd300_vgg16(weights_backbone=None,
                              num_classes=2,
-                             trainable_backbone_layers=5,
-                             **defaults)
+                             trainable_backbone_layers=5)
         config = DefaultTrainingConfig()
         config.default_batch_size = 32
         config.num_workers = 0

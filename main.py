@@ -6,14 +6,16 @@ from torch_pruning.pruner.importance import GroupNormImportance
 from nets.DetectionNets import Detection_SSD
 
 if __name__ == '__main__':
-    pruning_foldername = "rand_init"
     ssd = Detection_SSD(root_train_dir="./data/empty_map/train",
                         json_train_labels="./data/empty_map/train/bboxes.json",
                         root_test_dir="./data/empty_map/test",
-                        json_test_labels="./data/empty_map/test/bboxes.json"
+                        json_test_labels="./data/empty_map/test/bboxes.json",
+                        checkpoint_path="./nets/checkpoints/ssd/rand_init/ssd60.checkpoint"
     )
+
     # Save the initialized model
-    ssd.save(f"nets/checkpoints/pruning/{pruning_foldername}/initialized.checkpoint")
+    ssd.save_checkpoint(f"./nets/checkpoints/pruning/ssd_pretrained/initialized_rand_init_pretrained60.checkpoint")
+
     ignored_layers = [ssd.model.head]
 
     pruner = GroupNormPruner(
@@ -24,12 +26,11 @@ if __name__ == '__main__':
     )
 
     torch.backends.cudnn.benchmark = True
-    ssd.train(80, pruner.regularize)
     step = 10
-    for i in range(0, 120, step):
+    for i in range(0, 80, step):
         ssd.train(step, pruner.regularize)
         ssd.calculate_metrics(True)
-        ssd.save(f"nets/checkpoints/pruning/{pruning_foldername}/sparse_training/sparse{80+i+step}.checkpoint")
-        ssd.plot_losses(f"nets/checkpoints/pruning/{pruning_foldername}/sparse_training/losses.png")
-        ssd.plot_mAPs(f"nets/checkpoints/pruning/{pruning_foldername}/sparse_training/map50.png", "map_50")
-        ssd.plot_mAPs(f"nets/checkpoints/pruning/{pruning_foldername}/sparse_training/map75.png", "map_75")
+        ssd.save_checkpoint(f"./nets/checkpoints/pruning/ssd_pretrained/sparse_training/pretrained60_sparse{i+step}.checkpoint")
+        ssd.plot_losses(f"./nets/checkpoints/pruning/ssd_pretrained/sparse_training/losses.png")
+        ssd.plot_mAPs(f"./nets/checkpoints/pruning/ssd_pretrained/sparse_training/map50.png", "map_50")
+        ssd.plot_mAPs(f"./nets/checkpoints/pruning/ssd_pretrained/sparse_training/map75.png", "map_75")

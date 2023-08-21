@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch_pruning as tp
 
 from nets.DetectionNets import Detection_SSD
+from config import DefaultTrainingConfig
 
 class Pruning_layer_t(TypedDict):
     sparsity: float
@@ -18,7 +19,7 @@ ssd = Detection_SSD(root_train_dir="./data/empty_map/train",
                     json_train_labels="./data/empty_map/train/bboxes.json",
                     root_test_dir="./data/empty_map/test",
                     json_test_labels="./data/empty_map/test/bboxes.json",
-                    checkpoint_path="./nets/checkpoints/prunable_ssd/prunable_ssd100.checkpoint"
+                    checkpoint_path="./nets/checkpoints/pruning/ssd_pretrained/sparse_training/pretrained60_sparse80.checkpoint"
 )
 model = ssd.model
 model.eval()
@@ -29,7 +30,7 @@ for p in model.parameters():
 # Statistics
 orig_params = tp.utils.count_params(model)
 orig_map = ssd.mAP_dicts[-1][1]
-orig_fps = ssd.get_inference_frequency(100, 100, True)
+orig_fps = ssd.get_inference_frequency(1000, 100, True)
 
 # Pruning utilities
 example_inputs = torch.rand(1,3,144,256).to(device=ssd.device)
@@ -38,7 +39,7 @@ importance = tp.importance.MagnitudeImportance(p=1)
 # Define the layers (list of modules) to prune
 pruning_layers: List[Pruning_layer_t] = [
     {
-        "sparsity": 0.1,
+        "sparsity": 0.,
         "module_names": [
             "backbone.features.0",
             "backbone.features.2",
@@ -53,7 +54,7 @@ pruning_layers: List[Pruning_layer_t] = [
         ]
     },
     {
-        "sparsity": 0.8,
+        "sparsity": 0.5,
         "module_names": [
             "backbone.features.21",
             "backbone.extra.0.1",
@@ -64,7 +65,7 @@ pruning_layers: List[Pruning_layer_t] = [
         ]
     },
     {
-        "sparsity": 0.8,
+        "sparsity": 0.5,
         "module_names": [
             "backbone.extra.0.7.3",
             "backbone.extra.1.0",
@@ -72,7 +73,7 @@ pruning_layers: List[Pruning_layer_t] = [
         ]
     },
     {
-        "sparsity": 0.9,
+        "sparsity": 0.5,
         "module_names": [
             "backbone.extra.1.2",
             "backbone.extra.2.0",
@@ -131,9 +132,21 @@ for i, pruning_layer in enumerate(pruning_layers):
 ##############
 # Finetuning #
 ##############
-ssd.train(20)
+# Change the training parameters of the network, since the model
+# is now smaller (i.e. use a larger lr)
+config = DefaultTrainingConfig(
+    default_batch_size=64,
+    num_workers=2,
+    sgd_learning_rate=0.1,
+    scheduler_milestones=[],
+    scheduler_gamma=1,
+    losses_plot_ylabel=ssd.losses_plot_ylabel
+)
+ssd.reset(config)
+ssd.save_model("nets/checkpoints/pruning/ssd_pretrained/finetuning/pretrained60_sparse80.model")
+# ssd.train(20)
 pruned_map = ssd.calculate_metrics(True)
-ssd.save("nets/checkpoints/pruned_ssd/orig100_finetune20.checkpoint")
+ssd.save_checkpoint("nets/checkpoints/pruning/ssd_pretrained/finetuning/pretrained60_sparse80_finetuned20_4layers_00_05_05_05.checkpoint")
 
 pruned_fps = ssd.get_inference_frequency(1000, 100, True)
 pruned_params = tp.utils.count_params(model)

@@ -51,46 +51,65 @@ class DetectionNetBench():
     network has ever achieved.
     """
     def __init__(self,
-                 model: nn.Module,
                  model_id: str,
+                 model: Optional[nn.Module] = None,
+                 model_path: Optional[str] = None,
                  config: DefaultTrainingConfig = DefaultTrainingConfig(),
                  root_train_dir: Optional[str] = None, json_train_labels: Optional[str] = None,
                  root_test_dir: Optional[str] = None, json_test_labels: Optional[str] = None,
-                 checkpoint_path: Optional[str] = None
+                 checkpoint_path: Optional[str] = None,
+                 load_only_weights: bool = False
             ) -> None:
         """
         Initializes the DetectionNetBench.
-        - If used for training, you need to provide all the arguments.
-        - If only used for evaluation (via the eval() method), you may
-        ignore all parameters, but you need to load a checkpoint. This
-        checkpoint can be saved using the save() method, after training.
-        - If you just want to visualize a test image, need only to specify
-        the test arguments (i.e. root_test_dir and json_test_labels).
-        - If you just want to get the inference frequency need only to specify
-        the test arguments (i.e. root_test_dir and json_test_labels).
+        - If you want to train the model, the following arguments should be
+        provided:
+            1. model_id
+            2. model or model_path
+            3. config
+            4. root_train_dir, root_test_dir, json_train_labels, json_test_labels
+        - If only used for evaluation, you need to provide:
+            1. model_id
+            2. model or model_path
+            3. checkpoint_path
+        - If you want to visualize a test image, or get the inference frequency
+        of the network you need only to specify:
+            1. model_id
+            2. model or model_path
+            3. checkpoint
+            4. root_test_dir and json_test_labels
 
         Args:
-        - model: The detection model you want to wrap.
         - model_id: A string to use when profiling or plotting losses
+        - model: The detection model you want to wrap or None, when you
+        provide the model via model_path argument.
+        - model_path: Path to the entire model you have saved, or None if
+        model argument is used.
+        - config: The training configuration that will be used, packaged into
+        a DefaultTrainingConfig object.
         - root_train_dir: The root directory, where all training image
                           files are located.
-        - json_train_labels: Path to the json file exported using
-                             label studio (the tool we used to label
-                             our data) for the training images.
+        - json_train_labels: Path to the json file containing the bboxes
+        along with their labels for the training data.
         - root_test_dir: The root directory, where all testing image
-                          files are located.
-        - json_test_labels: Path to the json file exported using
-                             label studio (the tool we used to label
-                             our data) for the testing images.
-        """
-        self.mAP = MeanAveragePrecision(box_format='xyxy',
-                                        iou_type='bbox',
-                                        iou_thresholds=[0.5, 0.75, 0.8, 0.85, 0.9, 0.95])
-        self.mAP_dicts: List[Tuple[int, Dict[str, float]]] = []
-        self.losses_plot_ylabel = config.losses_plot_ylabel
+        files are located.
+        - json_test_labels: Path to the json file containing the bboxes
+        along with their labels for the test data.
+        - load_only_weights: Used only when checkpoint_path is provided.
+        If True it only loads the model.state_dict to the model (i.e. weights
+        and biases) and all other information like losses, epochs, optimizer.state_dict
+        are ignored.
 
-        # Decide what methods can be executed based on the
-        # arguments provided
+        Raises:
+        If both model and model_path are None.
+        If both model and model_path are not None.
+        """
+        if model is None and model_path is None:
+            raise Exception("One the arguments: model, model_path should not be none")
+        if model is not None and model_path is not None:
+            raise Exception("Only one of the arguments model, model_path is allowed to be None")
+
+        # Decide what methods can be executed based on the arguments provided
         if (root_train_dir and json_train_labels and
             root_test_dir and json_test_labels
         ):
@@ -123,18 +142,37 @@ class DetectionNetBench():
         print(f"{model_id} initialized in {str(self.device)}")
 
         # Model
-        self.model: nn.Module = model.to(self.device)
         self.model_id: str = model_id
+        if model is not None:
+            self.model: nn.Module = model.to(self.device)
+        elif model_path is not None:
+            self.model: nn.Module = torch.load(model_path).to(self.device)
 
         # Model parameters
         self.batch_size: int = config.default_batch_size
         self.num_workers: int = config.num_workers
 
+        self.optimizer = self._get_optimizer(config)
+        self.scheduler = self._get_scheduler(config)
+        self.prof = self._get_profiler(config)
+        self.mAP = MeanAveragePrecision(box_format='xyxy',
+                                        iou_type='bbox',
+                                        iou_thresholds=[0.5, 0.75, 0.8, 0.85, 0.9, 0.95])
+
         # Checkpoint info
         self.epoch: int = 0
         self.training_time: float = 0.
-        self.losses: List[Losses_dict_t] = []
+        self.losses: List[Losses_dict_t] = []    
+        self.mAP_dicts: List[Tuple[int, Dict[str, float]]] = []
+        
+        self.losses_plot_ylabel = config.losses_plot_ylabel
+        self.config = config
 
+        if checkpoint_path:
+            self.load(checkpoint_path, load_only_weights)
+
+
+    def _get_optimizer(self, config: DefaultTrainingConfig) -> optim.SGD:
         # Found out the line of code -after the comments- here:
         # https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html
         # Did some research and found the link below that may help you
@@ -147,38 +185,37 @@ class DetectionNetBench():
         # momentum in optim.SGD. More:
         # https://discuss.pytorch.org/t/update-only-sub-elements-of-weights/29101
         params = [p for p in self.model.parameters() if p.requires_grad]
-        # Momentum and weight_decay constants were found at
-        # the Faster RCNN paper and the SSD paper.
-        self.optimizer = optim.SGD(params, 
-                                   lr=config.sgd_learning_rate,
-                                   momentum=config.sgd_momentum, 
-                                   weight_decay=config.sgd_weight_decay
-                                )
-        self.scheduler = optim.lr_scheduler.MultiStepLR(
-                            self.optimizer,
-                            milestones=config.scheduler_milestones,
-                            gamma=config.scheduler_gamma
-                        )
-        self.prof = None
-        if config.profile:
-            self.prof = torch.profiler.profile(
-                    activities=[torch.profiler.ProfilerActivity.CPU,
-                                torch.profiler.ProfilerActivity.CUDA],
-                    schedule=torch.profiler.schedule(wait=config.prof_wait,
-                                                    warmup=config.prof_warmup,
-                                                    active=config.prof_active, 
-                                                    repeat=config.prof_repeat),
-                    on_trace_ready=torch.profiler.
-                                    tensorboard_trace_handler('./log/' + model_id),
-                    record_shapes=True,
-                    with_stack=True,
-                    profile_memory=True
-                )
+        optimizer = optim.SGD(params,
+                              lr=config.sgd_learning_rate,
+                              momentum=config.sgd_momentum,
+                              weight_decay=config.sgd_weight_decay)
+        return optimizer
 
-        if checkpoint_path:
-            self.load(checkpoint_path)
+    def _get_scheduler(self, config: DefaultTrainingConfig) -> optim.lr_scheduler.MultiStepLR:
+        if not self.optimizer:
+            raise Exception("Scheduler can not be defined if there is no optimizer")
+        scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer,
+                                                   milestones=config.scheduler_milestones,
+                                                   gamma=config.scheduler_gamma)
+        return scheduler
 
-    def load(self, checkpoint_path: str) -> None:
+    def _get_profiler(self, config: DefaultTrainingConfig) -> Optional[torch.profiler.profile]:
+        if not config.profile:
+            return None
+        profiler = torch.profiler.profile(
+                activities=[torch.profiler.ProfilerActivity.CPU,
+                            torch.profiler.ProfilerActivity.CUDA],
+                schedule=torch.profiler.schedule(wait=config.prof_wait,
+                                                 warmup=config.prof_warmup,
+                                                 active=config.prof_active, 
+                                                 repeat=config.prof_repeat),
+                on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/' + self.model_id),
+                record_shapes=True,
+                with_stack=True,
+                profile_memory=True)
+        return profiler
+
+    def load(self, checkpoint_path: str, load_only_weights: bool = False) -> None:
         """
         Given a checkpoint_path, loads the checkpoint dictionary
         to the DetectionNetBench attributes.
@@ -192,6 +229,8 @@ class DetectionNetBench():
         """
         checkpoint: Checkpoint_t = torch.load(checkpoint_path, map_location=torch.device(self.device))
         self.model.load_state_dict(checkpoint["model_state_dict"])
+        if load_only_weights:
+            return
         self.epoch = checkpoint["epoch"]
         self.losses = checkpoint["losses"]
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -213,7 +252,7 @@ class DetectionNetBench():
 
         self.training_time = checkpoint["training_time"]
 
-    def save(self, checkpoint_path: str) -> None:
+    def save_checkpoint(self, checkpoint_path: str) -> None:
         """
         Given the checkpoint path, collect all info into
         a Checkpoint_t dictionary and use torch to save it
@@ -229,6 +268,20 @@ class DetectionNetBench():
             "mAPs": self.mAP_dicts
         }
         torch.save(checkpoint, checkpoint_path)
+
+    def save_model(self, model_path: str) -> None:
+        torch.save(self.model.to(torch.device("cpu")), model_path)
+
+    def reset(self, config: Optional[DefaultTrainingConfig] = None):
+        if config:
+            self.config = config
+        self.epoch = 0
+        self.training_time = 0
+        self.losses = []
+        self.mAP_dicts = []
+        self.optimizer = self._get_optimizer(self.config)
+        self.scheduler = self._get_scheduler(self.config)
+        self.prof = self._get_profiler(self.config)
 
     def _collate_fn(self, data: list[BoundBoxDataset_Item]) -> Tuple[list[torch.Tensor], list[Dict[str, torch.Tensor]]]:
         """ 

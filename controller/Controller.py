@@ -3,7 +3,6 @@ import math
 
 import numpy as np
 
-from constants import EPS
 from constants import EPS,\
     FOCAL_LENGTH_X, FOCAL_LENGTH_Y,\
     PAWN_SIZE_X, PAWN_SIZE_Y, PAWN_SIZE_Z,\

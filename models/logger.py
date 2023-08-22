@@ -629,21 +629,22 @@ class GraphLogs:
             d_points = np.hstack([d_points, np.array(cur_d if cur_d else none_list).reshape([3,1])])
             times.append(info["extra_timestamp"])
         
+        t0 = times[0]
         for i, timestamp in enumerate(times):
-            times[i] = (timestamp - times[-1])*1e-9
+            times[i] = (timestamp - t0)*1e-9
 
         fig = plt.figure(figsize=(25, 20))
         axes: Any = fig.subplots(nrows=3, ncols=3)
         for i in range(3):
             axes[0, i].plot(times, p_points[i,:])
-            axes[0, i].set_xlabel("sim time (s)")
-            axes[0, i].set_ylabel("Proportional value")
+            axes[0, i].set_xlabel("Simulation time (s)")
+            axes[0, i].set_ylabel("Proportional error - Distance (m)")
             axes[1, i].plot(times, i_points[i,:])
-            axes[1, i].set_xlabel("sim time (s)")
-            axes[1, i].set_ylabel("Integral value")
+            axes[1, i].set_xlabel("Simulation time (s)")
+            axes[1, i].set_ylabel("Integrated error (m*s)")
             axes[2, i].plot(times, d_points[i,:])
-            axes[2, i].set_xlabel("sim time (s)")
-            axes[2, i].set_ylabel("Derivative value")
+            axes[2, i].set_xlabel("Simulation time (s)")
+            axes[2, i].set_ylabel("Derivative term - Velocity (m/s)")
 
         # Since each column for the graphs is a specific axis for the movement
         # we should annotate each column accordingly

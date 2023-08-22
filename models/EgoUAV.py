@@ -9,13 +9,7 @@ from torchvision import transforms as T
 
 from models.UAV import UAV
 from project_types import Filter_t, Motion_model_t
-from constants import EGO_UAV_NAME, PORT,\
-    FOCAL_LENGTH_X, FOCAL_LENGTH_Y,\
-    PAWN_SIZE_X, PAWN_SIZE_Y, PAWN_SIZE_Z,\
-    IMG_HEIGHT, IMG_WIDTH,\
-    HORIZ_FOV, VERT_FOV,\
-    CAMERA_OFFSET_X,\
-    SCORE_THRESHOLD
+from constants import EGO_UAV_NAME, PORT
 from models.BoundingBox import BoundingBox
 from nets.DetectionNets import Detection_FasterRCNN
 from nets.DetectionNets import Detection_SSD
@@ -44,7 +38,7 @@ class EgoUAV(UAV):
         # self.net = Detection_FasterRCNN()
         # self.net.load("nets/checkpoints/rcnn100.checkpoint")
         self.net = Detection_SSD()
-        self.net.load("nets/checkpoints/ssd/ssd250.checkpoint")
+        self.net.load("nets/checkpoints/ssd/rand_init/ssd60.checkpoint")
         # self.controller = Controller(vel_magn=vel_magn,
         #                              dt=(1/inference_freq_Hz),
         #                              weight_vel=weight_vel,
@@ -53,10 +47,11 @@ class EgoUAV(UAV):
         #                              use_pepper_filter=use_pepper_filter)
         self.controller = PIDController(vel_magn=vel_magn,
                                         dt=(1/inference_freq_Hz),
-                                        Kp=np.array([0.1, -0.1, 0.1]),
-                                        Ki=np.array([0.1, 0.2, 0.2]),
-                                        Kd=np.array([1.2, 4, 1]),
-                                        tau=np.array([0.02, 0.02, 0.02]))
+                                        Kp=np.array([6., 8., 4.]),
+                                        Ki=np.array([5., 1., 1.]),
+                                        Kd=np.array([8., 4., 4.]),
+                                        tau=np.array([0., 0., 0.]))
+
 
     def _getImage(self,
                   view_mode: bool = False,

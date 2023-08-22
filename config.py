@@ -72,7 +72,7 @@ class DefaultCoSimulatorConfig():
                  min_vel: Tuple[float, float, float] = (1., -5., -5.),
                  weight_vel: Tuple[float, float, float] = (1., 1., 4.),
                  sim_fps: int = 60,
-                 simulation_time_s: int = 240,
+                 simulation_time_s: int = 85,
                  camera_fps: int = 30,
                  infer_freq_Hz: int = 30,
                  filter_freq_Hz: int = 30,

@@ -1,5 +1,7 @@
+from pprint import pprint
+
 from nets.DetectionNets import Detection_SSD
-from pruning import prune_ssd
+from pruning import get_model_stats
 
 if __name__ == '__main__':
     ssd = Detection_SSD(root_train_dir="./data/empty_map/train",
@@ -9,8 +11,4 @@ if __name__ == '__main__':
                         checkpoint_path="./nets/checkpoints/pruning/ssd_pretrained/sparse_training/pretrained60_sparse80.checkpoint"
     )
     
-    prune_ssd(ssd=ssd,
-              ssd_checkpoint_filename="pretrained60_sparse80.checkpoint",
-              sparsities=(0.9, 0.9, 0.9, 0.9,),
-              checkpoint_folder="./nets/checkpoints/pruning/ssd_pretrained/finetuning/4layers_09_09_09_09/"
-    )
+    pprint(get_model_stats(ssd))

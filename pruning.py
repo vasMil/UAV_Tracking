@@ -1,13 +1,52 @@
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import os
 
 import torch
 import torch.nn as nn
+import torch.backends.cudnn
 import torch_pruning as tp
 
 from nets.DetectionNets import Detection_SSD
+from nets.DetectionNetBench import DetectionNetBench
 from config import DefaultTrainingConfig
-from project_types import Pruning_layer_t
+from project_types import Pruned_model_stats_t
+
+SSD_LAYERS = [
+    [
+        "backbone.features.0",
+        "backbone.features.2",
+        "backbone.features.5",
+        "backbone.features.7",
+        "backbone.features.10",
+        "backbone.features.12",
+        "backbone.features.14",
+        "backbone.features.17",
+        "backbone.features.19",
+        "backbone.features.21"
+    ],
+    [
+        "backbone.features.21",
+        "backbone.extra.0.1",
+        "backbone.extra.0.3",
+        "backbone.extra.0.5",
+        "backbone.extra.0.7.1",
+        "backbone.extra.0.7.3"
+    ],
+    [
+        "backbone.extra.0.7.3",
+        "backbone.extra.1.0",
+        "backbone.extra.1.2"
+    ],
+    [
+        "backbone.extra.1.2",
+        "backbone.extra.2.0",
+        "backbone.extra.2.2",
+        "backbone.extra.3.0",
+        "backbone.extra.3.2",
+        "backbone.extra.4.0",
+        "backbone.extra.4.2"
+    ]
+]
 
 def prune_ssd(ssd: Detection_SSD,
               ssd_checkpoint_filename: str,
@@ -52,60 +91,11 @@ def prune_ssd(ssd: Detection_SSD,
     example_inputs = torch.rand(1,3,144,256).to(device=ssd.device)
     importance = tp.importance.MagnitudeImportance(p=1)
 
-    # Define the layers (list of modules) to prune
-    pruning_layers: List[Pruning_layer_t] = [
-        {
-            "sparsity": sparsities[0],
-            "module_names": [
-                "backbone.features.0",
-                "backbone.features.2",
-                "backbone.features.5",
-                "backbone.features.7",
-                "backbone.features.10",
-                "backbone.features.12",
-                "backbone.features.14",
-                "backbone.features.17",
-                "backbone.features.19",
-                "backbone.features.21"
-            ]
-        },
-        {
-            "sparsity": sparsities[1],
-            "module_names": [
-                "backbone.features.21",
-                "backbone.extra.0.1",
-                "backbone.extra.0.3",
-                "backbone.extra.0.5",
-                "backbone.extra.0.7.1",
-                "backbone.extra.0.7.3"
-            ]
-        },
-        {
-            "sparsity": sparsities[2],
-            "module_names": [
-                "backbone.extra.0.7.3",
-                "backbone.extra.1.0",
-                "backbone.extra.1.2"
-            ]
-        },
-        {
-            "sparsity": sparsities[3],
-            "module_names": [
-                "backbone.extra.1.2",
-                "backbone.extra.2.0",
-                "backbone.extra.2.2",
-                "backbone.extra.3.0",
-                "backbone.extra.3.2",
-                "backbone.extra.4.0",
-                "backbone.extra.4.2"
-            ]
-        }
-    ]
 
-    for i, pruning_layer in enumerate(pruning_layers):
+    for sparsity, module_names in zip(sparsities, SSD_LAYERS):
         # Extract the modules to be pruned at this layer, into a list
         layer_modules = []
-        for module_name in pruning_layer["module_names"]:
+        for module_name in module_names:
             layer_modules.append(ssd.model.get_submodule(module_name))
 
         # Put all other modules (that won't be pruned) into an "ignored" list
@@ -119,7 +109,7 @@ def prune_ssd(ssd: Detection_SSD,
             example_inputs=example_inputs,
             importance=importance,
             iterative_steps=1,
-            ch_sparsity=pruning_layer["sparsity"],
+            ch_sparsity=sparsity,
             global_pruning=False,
             ignored_layers=ignored_layers,
         ).step()
@@ -151,3 +141,31 @@ def prune_ssd(ssd: Detection_SSD,
         ssd.plot_losses(f"{checkpoint_folder}/losses.png")
         ssd.plot_mAPs(f"{checkpoint_folder}/map50.png", "map_50")
         ssd.plot_mAPs(f"{checkpoint_folder}/map75.png", "map_75")
+
+def count_layers_params(model: nn.Module) -> Tuple[int, int, int, int]:
+    layer_params = [0 for _ in SSD_LAYERS]
+    for i, layer in enumerate(SSD_LAYERS):
+        for submodule_name in layer:
+            submodule = model.get_submodule(submodule_name)
+            layer_params[i] += tp.utils.count_params(submodule)
+    return tuple(layer_params)
+
+def get_model_stats(pruned_net: DetectionNetBench) -> Pruned_model_stats_t:
+    model_stats: Pruned_model_stats_t = {
+        "num_params": 0,
+        "flops": 0,
+        "layer_params": (0, 0, 0, 0,),
+        "map_dict": {},
+        "train_loss": 0,
+        "val_loss": 0,
+        "epoch": 0,
+        "infer_freqs": pruned_net.get_inference_frequency(1000, 1000, True)
+    }
+    model_stats["epoch"] = pruned_net.epoch
+    example_input = torch.rand(1,3,144,256).to(device=pruned_net.device)
+    model_stats["flops"], model_stats["num_params"]= tp.utils.op_counter.count_ops_and_params(pruned_net.model, example_input)
+    model_stats["layer_params"] = count_layers_params(pruned_net.model)
+    model_stats["map_dict"] = pruned_net.mAP_dicts[-1][1]
+    model_stats["train_loss"] = pruned_net.losses[-1]["train"]
+    model_stats["val_loss"] = pruned_net.losses[-1]["val"]
+    return model_stats

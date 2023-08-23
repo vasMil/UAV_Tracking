@@ -138,3 +138,7 @@ class Infer_freqs_t(TypedDict):
     model_avg_freq_Hz: float
     eval_first_meas_ns: float
     eval_avg_freq_Hz: float
+
+class Pruning_layer_t(TypedDict):
+    sparsity: float
+    module_names: List[str]

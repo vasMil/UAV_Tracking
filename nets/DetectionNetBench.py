@@ -658,47 +658,55 @@ class DetectionNetBench():
             "eval_first_meas_ns": 0.,
             "eval_avg_freq_Hz": 0.
         }
-        # Create a dataloader to use in order to fetch images
-        dataset = BoundingBoxDataset(self.root_dirs["val"], self.json_labels["val"]) # type: ignore
-        dataloader = DataLoader(dataset=dataset, shuffle=True,
-                                collate_fn=self._collate_fn)
-
         # Decide whether to benchmark or not
         torch.backends.cudnn.benchmark = cudnn_benchmark
 
+        # Create a dataloader to use in order to fetch images
+        dataset = BoundingBoxDataset(self.root_dirs["val"], self.json_labels["val"]) # type: ignore
+        dataloader = DataLoader(dataset=dataset,
+                                shuffle=True,
+                                collate_fn=self._collate_fn,
+                                batch_size=max(warmup, num_tests))
+
+        ##########
+        # Warmup #
+        ##########
+        dev_images, _ = next(iter(dataloader))[:warmup]
+        dev_images = [img.to(self.device) for img in dev_images]
         # Do some warmup before evaluation
-        for _ in range(warmup):
-            images, _ = next(iter(dataloader))
-            dev_images = [img.to(self.device) for img in images]
-            self.eval(image=dev_images[0],
-                      threshold=0)
-        
-        # Perform the evaluation using self.model()
-        start = time.time_ns()
-        self.model.eval()
-        first: float = 0
-        for i in range(num_tests):
-            images, _ = next(iter(dataloader))
-            dev_images = [img.to(self.device) for img in images]
-            self.model(dev_images)
-            if i == 0: first = time.time_ns()
+        for i in range(warmup):
+            self.eval(image=dev_images[i], threshold=0)
 
-        end = time.time_ns()
-        # Calculate the average
-        infer_reqs["model_first_meas_ns"] = first-start
-        infer_reqs["model_avg_freq_Hz"] = num_tests/((end-start)*1e-9)
-
-        # Perform the evaluation using self.eval()
+        ###############
+        # self.eval() #
+        ###############
+        dev_images, _ = next(iter(dataloader))[:num_tests]
+        dev_images = [img.to(self.device) for img in dev_images]
+        first = 0
         start = time.time_ns()
-        first: float = 0
         for i in range(num_tests):
-            images, _ = next(iter(dataloader))
-            self.eval(image=images[0], threshold=0)
+            self.eval(image=dev_images[0], threshold=0)
             if i == 0: first = time.time_ns()
         end = time.time_ns()
         # Calculate the average
         infer_reqs["eval_first_meas_ns"] = first-start
         infer_reqs["eval_avg_freq_Hz"] = num_tests/((end-start)*1e-9)
+
+        ################
+        # self.model() #
+        ################
+        dev_images, _ = next(iter(dataloader))[:num_tests]
+        dev_images = [img.to(self.device) for img in dev_images]
+        first = 0
+        start = time.time_ns()
+        self.model.eval()
+        first: float = 0
+        for i in range(num_tests):
+            self.model(dev_images[i].unsqueeze(0))
+            if i == 0: first = time.time_ns()
+        end = time.time_ns()
+        infer_reqs["model_first_meas_ns"] = first-start
+        infer_reqs["model_avg_freq_Hz"] = num_tests/((end-start)*1e-9)
         
         return infer_reqs
 

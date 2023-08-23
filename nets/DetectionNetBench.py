@@ -685,7 +685,7 @@ class DetectionNetBench():
         first = 0
         start = time.time_ns()
         for i in range(num_tests):
-            self.eval(image=dev_images[0], threshold=0)
+            self.eval(image=dev_images[i], threshold=0)
             if i == 0: first = time.time_ns()
         end = time.time_ns()
         # Calculate the average

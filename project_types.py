@@ -142,9 +142,12 @@ class Infer_freqs_t(TypedDict):
 class Pruned_model_stats_t(TypedDict):
     num_params: int
     flops: int
-    layer_params: Tuple[int, int, int, int]
+    layer_params: List[int]
     map_dict: Dict[str, float]
-    train_loss: float
-    val_loss: float
+    losses: Losses_dict_t
     epoch: int
     infer_freqs: Infer_freqs_t
+    sparsity: Optional[float]
+    layer_sparsity: Optional[List[float]]
+    theoretical_speedup: Optional[float]
+    actual_speedup: Optional[float]

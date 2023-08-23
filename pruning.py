@@ -1,5 +1,6 @@
 from typing import List, Tuple, Optional
 import os
+from pprint import pprint
 
 import torch
 import torch.nn as nn
@@ -142,30 +143,75 @@ def prune_ssd(ssd: Detection_SSD,
         ssd.plot_mAPs(f"{checkpoint_folder}/map50.png", "map_50")
         ssd.plot_mAPs(f"{checkpoint_folder}/map75.png", "map_75")
 
-def count_layers_params(model: nn.Module) -> Tuple[int, int, int, int]:
+def count_layers_params(model: nn.Module) -> List[int]:
+    seen_submodules = []
     layer_params = [0 for _ in SSD_LAYERS]
     for i, layer in enumerate(SSD_LAYERS):
         for submodule_name in layer:
             submodule = model.get_submodule(submodule_name)
+            if submodule in seen_submodules:
+                continue
+            seen_submodules.append(submodule)
             layer_params[i] += tp.utils.count_params(submodule)
-    return tuple(layer_params)
+    # print(f"Counted_by_tp: {tp.utils.count_params(model)}")
+    # print(f"Calculated: {sum(layer_params)}")
+    # assert(tp.utils.count_params(model) == sum(layer_params))
+    return layer_params
 
-def get_model_stats(pruned_net: DetectionNetBench) -> Pruned_model_stats_t:
+def calc_sparsity(orig_params_cnt: int, pruned_params_cnt: int) -> float:
+    return (orig_params_cnt - pruned_params_cnt)/orig_params_cnt
+
+def get_model_stats(pruned_net: DetectionNetBench,
+                    orig_model_stats: Optional[Pruned_model_stats_t] = None
+    ) -> Pruned_model_stats_t:
     model_stats: Pruned_model_stats_t = {
         "num_params": 0,
         "flops": 0,
-        "layer_params": (0, 0, 0, 0,),
-        "map_dict": {},
-        "train_loss": 0,
-        "val_loss": 0,
-        "epoch": 0,
-        "infer_freqs": pruned_net.get_inference_frequency(1000, 1000, True)
+        "layer_params": count_layers_params(pruned_net.model),
+        "map_dict": pruned_net.mAP_dicts[-1][1],
+        "losses": pruned_net.losses[-1],
+        "epoch": pruned_net.epoch,
+        "infer_freqs": pruned_net.get_inference_frequency(1000, 1000, True),
+        "sparsity": None,
+        "layer_sparsity": None,
+        "theoretical_speedup": None,
+        "actual_speedup": None
     }
-    model_stats["epoch"] = pruned_net.epoch
     example_input = torch.rand(1,3,144,256).to(device=pruned_net.device)
     model_stats["flops"], model_stats["num_params"]= tp.utils.op_counter.count_ops_and_params(pruned_net.model, example_input)
-    model_stats["layer_params"] = count_layers_params(pruned_net.model)
-    model_stats["map_dict"] = pruned_net.mAP_dicts[-1][1]
-    model_stats["train_loss"] = pruned_net.losses[-1]["train"]
-    model_stats["val_loss"] = pruned_net.losses[-1]["val"]
+    if orig_model_stats:
+        model_stats["sparsity"] = calc_sparsity(orig_model_stats["num_params"], model_stats["num_params"])
+        model_stats["layer_sparsity"] = [calc_sparsity(*tup) for tup in zip(orig_model_stats["layer_params"], model_stats["layer_params"])]
+        model_stats["theoretical_speedup"] = orig_model_stats["flops"] / model_stats["flops"]
+        model_stats["actual_speedup"] = orig_model_stats["infer_freqs"]["eval_avg_freq_Hz"] / model_stats["infer_freqs"]["eval_avg_freq_Hz"]
     return model_stats
+
+def get_pruning_report(pruned_models: List[str],
+                       finetuned_checkpoints: List[str],
+                       original_checkpoint: str,
+                       train_folder: str,
+                       train_json: str,
+                       test_folder: str,
+                       test_json: str
+    ):
+    if len(pruned_models) != len(finetuned_checkpoints):
+        raise ValueError("pruned_models and finetuned_checkpoints should have the same length")
+    # Load the original net and extract it's stats
+    ssd = Detection_SSD(root_train_dir=train_folder,
+                        root_test_dir=test_folder,
+                        json_train_labels=train_json,
+                        json_test_labels=test_json,
+                        checkpoint_path=original_checkpoint)
+    orig_stats = get_model_stats(ssd)
+    del ssd
+
+    for model, checkpoint in zip(pruned_models, finetuned_checkpoints):
+        print(f"\nStats for: {model.split('/')[-2]}")
+        pruned_ssd = DetectionNetBench(model_id="",
+                                       model_path=model,
+                                       root_train_dir=train_folder,
+                                       root_test_dir=test_folder,
+                                       json_train_labels=train_json,
+                                       json_test_labels=test_json,
+                                       checkpoint_path=checkpoint)
+        pprint(get_model_stats(pruned_ssd, orig_stats))        

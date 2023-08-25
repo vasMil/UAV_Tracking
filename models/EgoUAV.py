@@ -47,10 +47,10 @@ class EgoUAV(UAV):
         #                              use_pepper_filter=use_pepper_filter)
         self.controller = PIDController(vel_magn=vel_magn,
                                         dt=(1/inference_freq_Hz),
-                                        Kp=np.array([6., 8., 4.]),
-                                        Ki=np.array([5., 1., 1.]),
-                                        Kd=np.array([8., 4., 4.]),
-                                        cutoff_freqs=np.array([0.6, 0.6, 1.5]))
+                                        Kp=np.array([10., 1., 4.]),
+                                        Ki=np.array([1., 1., 1.]),
+                                        Kd=np.array([2., 1., 1.]),
+                                        cutoff_freqs=np.array([0, 0, 0]))
 
 
     def _getImage(self,

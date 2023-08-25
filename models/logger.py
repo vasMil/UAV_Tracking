@@ -318,8 +318,8 @@ class Logger:
         VideoWriter to write the output video of this run.
         """
         # Use cv2's video writer
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        video = cv2.VideoWriter(self.video_path,
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v') # type: ignore
+        video = cv2.VideoWriter(self.video_path, # type: ignore
                                 fourcc,
                                 self.config.camera_fps,
                                 (IMG_WIDTH*IMG_RESOLUTION_INCR_FACTOR,
@@ -331,17 +331,17 @@ class Logger:
             files.sort()
             # Add the images to the video one by one
             for imgf in files: 
-                video.write(cv2.imread(os.path.join(self.images_path, imgf))) 
+                video.write(cv2.imread(os.path.join(self.images_path, imgf))) # type: ignore
         else:
             for i, frame in enumerate(self.frames):
                 frame = self.fix_frame_size(frame, self.info_per_frame[i])
                 frame_for_cv2 = (frame*255).to(torch.uint8).permute(1, 2, 0).numpy()
-                frame_for_cv2 = cv2.cvtColor(frame_for_cv2, cv2.COLOR_RGB2BGR)
+                frame_for_cv2 = cv2.cvtColor(frame_for_cv2, cv2.COLOR_RGB2BGR) # type: ignore
                 video.write(frame_for_cv2)
 
         # Save the video to the video path
         video.release()
-        cv2.destroyAllWindows()
+        cv2.destroyAllWindows() # type: ignore
 
     def merge_to_FrameInfo(self,
                            bbox: Optional[BoundingBox],

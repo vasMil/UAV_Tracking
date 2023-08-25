@@ -44,17 +44,10 @@ class PIDController():
         # Cheat
         self.client = airsim.MultirotorClient()
         # Lowpass filter
-        orders = np.ones([3])*8
-        self.b = np.empty([3], dtype=np.ndarray)
-        self.a = np.empty([3], dtype=np.ndarray)
-        self.z = np.empty([3], dtype=np.ndarray)
-        for i in range(3):
-            self.b[i], self.a[i] = signal.butter(N=orders[i],
-                                                 Wn=cutoff_freqs[i],
-                                                 fs=(1/dt),
-                                                 btype='low',
-                                                 analog=False)
-            self.z[i] = signal.lfilter_zi(self.b[i], self.a[i])
+        if np.any(cutoff_freqs == 0):
+            self.filter = None
+        else:
+            self.filter = Lowpass_3Dfilter(orders=np.ones([3])*2, cutoffs=cutoff_freqs, fs=(1/dt))
 
     def bbox_to_td_state(self,
                          bbox: BoundingBox,
@@ -106,19 +99,15 @@ class PIDController():
             self.lost_meas_cnt += 1
             return (self.prev_control, 0., estInfo)
 
-        est_td_state = self.bbox_to_td_state(bbox, ego_pos, "focal_length")
-        estInfo["leadingUAV_position"] = tuple(est_td_state.squeeze().tolist())
+        td_state = self.bbox_to_td_state(bbox, ego_pos, "focal_length")
+        estInfo["leadingUAV_position"] = tuple(td_state.squeeze().tolist())
+        dist = td_state - ego_pos
 
-        est_td_state -= ego_pos
-        filt_dist = []
-        for i in range(3):
-            x, self.z[i] = signal.lfilter(self.b[i], self.a[i], [est_td_state[i].item()], zi=self.z[i])
-            filt_dist.append(x)
-        estInfo["extra_filtered_dist"] = tuple(filt_dist)
+        if self.filter:
+            dist = self.filter.filter_sample(td_state - ego_pos)
+            estInfo["extra_filtered_dist"] = tuple(dist.tolist())
 
-        td_state = self.bbox_to_td_state(bbox, ego_pos, "cheat")
-        error = td_state - ego_pos
-        # estInfo["leadingUAV_position"] = tuple((td_state).squeeze().tolist())
+        error = np.array(dist).reshape([3,1]) - np.array([[3.5], [0], [0]])
 
         dt = (self.lost_meas_cnt+1) * self.dt
         self.lost_meas_cnt = 0
@@ -136,8 +125,8 @@ class PIDController():
         estInfo["extra_pid_d"] = tuple(self.differentiator.squeeze().tolist())
         estInfo["egoUAV_target_velocity"] = tuple(self.differentiator.squeeze().tolist())
 
-        # Calculate the output and clamp it's values
-        control = self.clamp(proportional + self.integrator + self.differentiator, mode="3d_magnitude")
+        # Calculate the output
+        control = proportional + self.integrator + self.differentiator
         estInfo["egoUAV_target_velocity"] = tuple(control.squeeze().tolist())
 
         self.prev_control = control
@@ -146,3 +135,30 @@ class PIDController():
 
         estInfo["still_tracking"] = True
         return (control, 0., estInfo)
+
+
+class Lowpass_3Dfilter():
+    def __init__(self,
+                 orders: np.ndarray,
+                 cutoffs: np.ndarray,
+                 fs: float
+    ) -> None:
+        self.orders = orders
+        self.cutoffs = cutoffs
+        self.b = np.empty([3], dtype=np.ndarray)
+        self.a = np.empty([3], dtype=np.ndarray)
+        self.z = np.empty([3], dtype=np.ndarray)
+        for i in range(3):
+            self.b[i], self.a[i] = signal.butter(N=orders[i],
+                                                Wn=cutoffs[i],
+                                                fs=fs,
+                                                btype='low',
+                                                analog=False)
+            self.z[i] = signal.lfilter_zi(self.b[i], self.a[i])
+
+    def filter_sample(self, sample: np.ndarray) -> np.ndarray:
+        filt_sample = np.empty([3,1])
+        for i in range(3):
+            x, self.z[i] = signal.lfilter(self.b[i], self.a[i], [sample[i].item()], zi=self.z[i])
+            filt_sample[i,0] = x
+        return filt_sample

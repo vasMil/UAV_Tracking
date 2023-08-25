@@ -13,7 +13,7 @@ if __name__ == '__main__':
     co_sim = CoSimulator(config=config,
                          log_folder="recordings/",
                          movement="Path",
-                         path_version="v1",
+                         path_version="str8line",
                          display_terminal_progress=True,
                          keep_frames=False,
                          get_video=True)

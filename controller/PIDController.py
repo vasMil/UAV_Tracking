@@ -1,13 +1,12 @@
 from typing import Tuple, Optional, Literal
 
 import numpy as np
+from scipy import signal
 
-from constants import EPS,\
-    FOCAL_LENGTH_X, FOCAL_LENGTH_Y,\
-    PAWN_SIZE_X, PAWN_SIZE_Y, PAWN_SIZE_Z,\
-    IMG_HEIGHT, IMG_WIDTH,\
-    HORIZ_FOV, VERT_FOV,\
-    CAMERA_OFFSET_X
+from constants import FOCAL_LENGTH_X, FOCAL_LENGTH_Y,\
+                      PAWN_SIZE_X, PAWN_SIZE_Y,\
+                      IMG_HEIGHT, IMG_WIDTH,\
+                      CAMERA_OFFSET_X
 from models.BoundingBox import BoundingBox
 from models.FrameInfo import EstimatedFrameInfo
 
@@ -20,7 +19,7 @@ class PIDController():
                  Kp: np.ndarray,
                  Ki: np.ndarray,
                  Kd: np.ndarray,
-                 tau: np.ndarray,
+                 cutoff_freqs: np.ndarray,
                  img_height: int = IMG_HEIGHT,
                  img_width: int = IMG_WIDTH
         ) -> None:
@@ -29,7 +28,7 @@ class PIDController():
         self.Kp = Kp.reshape([3,1])
         self.Ki = Ki.reshape([3,1])
         self.Kd = Kd.reshape([3,1])
-        self.tau = tau.reshape([3,1])
+        self.cutoff_freqs = cutoff_freqs.reshape([3,1])
         self.IMG_HEIGHT = img_height
         self.IMG_WIDTH = img_width
 
@@ -42,8 +41,20 @@ class PIDController():
         self.limMax = np.zeros([3,1])
         self.limMin = np.zeros([3,1])
         self.lost_meas_cnt = 0
+        # Cheat
         self.client = airsim.MultirotorClient()
-
+        # Lowpass filter
+        orders = np.ones([3])*8
+        self.b = np.empty([3], dtype=np.ndarray)
+        self.a = np.empty([3], dtype=np.ndarray)
+        self.z = np.empty([3], dtype=np.ndarray)
+        for i in range(3):
+            self.b[i], self.a[i] = signal.butter(N=orders[i],
+                                                 Wn=cutoff_freqs[i],
+                                                 fs=(1/dt),
+                                                 btype='low',
+                                                 analog=False)
+            self.z[i] = signal.lfilter_zi(self.b[i], self.a[i])
 
     def bbox_to_td_state(self,
                          bbox: BoundingBox,
@@ -61,9 +72,10 @@ class PIDController():
             x_offset += (CAMERA_OFFSET_X + PAWN_SIZE_X/2)
             return ego_pos + np.array([[x_offset], [y_offset], [z_offset]])
         elif method == "cheat":
-            return self.client.getMultirotorState(vehicle_name="LeadingUAV")\
-                              .kinematics_estimated.position\
-                              .to_numpy_array().reshape([3,1])
+            return (self.client.getMultirotorState(vehicle_name="LeadingUAV")
+                    .kinematics_estimated.position
+                    .to_numpy_array()
+                    .reshape([3,1]))
         else:
             raise ValueError("Invalid method")
     
@@ -86,17 +98,25 @@ class PIDController():
             "still_tracking": False,
             "extra_pid_p": None,
             "extra_pid_i": None,
-            "extra_pid_d": None
+            "extra_pid_d": None,
+            "extra_filtered_dist": None
         }
         if bbox is None:
             estInfo["egoUAV_target_velocity"] = tuple(self.prev_control.squeeze().tolist())
             self.lost_meas_cnt += 1
             return (self.prev_control, 0., estInfo)
-        td_state = self.bbox_to_td_state(bbox, ego_pos, "cheat")
-        est_td_state = self.bbox_to_td_state(bbox, ego_pos, "Muvva")
+
+        est_td_state = self.bbox_to_td_state(bbox, ego_pos, "focal_length")
         estInfo["leadingUAV_position"] = tuple(est_td_state.squeeze().tolist())
 
+        est_td_state -= ego_pos
+        filt_dist = []
+        for i in range(3):
+            x, self.z[i] = signal.lfilter(self.b[i], self.a[i], [est_td_state[i].item()], zi=self.z[i])
+            filt_dist.append(x)
+        estInfo["extra_filtered_dist"] = tuple(filt_dist)
 
+        td_state = self.bbox_to_td_state(bbox, ego_pos, "cheat")
         error = td_state - ego_pos
         # estInfo["leadingUAV_position"] = tuple((td_state).squeeze().tolist())
 

@@ -22,6 +22,7 @@ class EstimatedFrameInfo(TypedDict):
     extra_pid_p: Optional[Tuple[float, float, float]]
     extra_pid_i: Optional[Tuple[float, float, float]]
     extra_pid_d: Optional[Tuple[float, float, float]]
+    extra_filtered_dist: Optional[Tuple[float, float, float]]
 
 class FrameInfo(TypedDict):
     bbox_score: Optional[float]
@@ -61,3 +62,4 @@ class FrameInfo(TypedDict):
     extra_pid_p: Optional[Tuple[float, float, float]]
     extra_pid_i: Optional[Tuple[float, float, float]]
     extra_pid_d: Optional[Tuple[float, float, float]]
+    extra_filtered_dist: Optional[Tuple[float, float, float]]

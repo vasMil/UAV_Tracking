@@ -50,7 +50,7 @@ class EgoUAV(UAV):
                                         Kp=np.array([6., 8., 4.]),
                                         Ki=np.array([5., 1., 1.]),
                                         Kd=np.array([8., 4., 4.]),
-                                        tau=np.array([0., 0., 0.]))
+                                        cutoff_freqs=np.array([0.6, 0.6, 1.5]))
 
 
     def _getImage(self,

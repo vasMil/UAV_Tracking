@@ -12,6 +12,7 @@ import numpy as np
 import plotext as tplt
 import airsim
 import json
+from scipy import fft
 
 from project_types import Status_t, Statistics_t, ExtendedCoSimulatorConfig_t
 from config import DefaultCoSimulatorConfig
@@ -354,7 +355,8 @@ class Logger:
                                "still_tracking": None,
                                "extra_pid_p": None,
                                "extra_pid_d": None,
-                               "extra_pid_i": None
+                               "extra_pid_i": None,
+                               "extra_filtered_dist": None
                             }
         ) -> FrameInfo:
         """
@@ -410,7 +412,8 @@ class Logger:
 
             "extra_pid_p": est_info["extra_pid_p"],
             "extra_pid_i": est_info["extra_pid_i"],
-            "extra_pid_d": est_info["extra_pid_d"]
+            "extra_pid_d": est_info["extra_pid_d"],
+            "extra_filtered_dist": est_info["extra_filtered_dist"]
         }
         return frameInfo
 
@@ -473,8 +476,9 @@ class GraphLogs:
     A class that utilizes, the information logged and creates useful Graphs,
     for the state of the simulation at each timestep (at which the logger recorded info).
     """
-    def __init__(self, frame_info: List[FrameInfo]) -> None:
+    def __init__(self, frame_info: List[FrameInfo], fs: float) -> None:
         self.frame_info = frame_info
+        self.fs = fs
 
     def _map_axis_to_idx(self,
                          axis: Literal["x", "y", "z", "all"]
@@ -659,6 +663,89 @@ class GraphLogs:
         fig.savefig(plot_filename)
         plt.close(fig)
 
+    def _plot_filtered_noise(self,
+                             ax_time: List[plt.Axes],
+                             ax_freq: List[plt.Axes],
+                             t: List[float],
+                             x: List[float],
+                             x_filt: List[float],
+                             x_ideal: List[float],
+                             f: List[float],
+                             X: List[float],
+                             X_FILT: List[float],
+                             X_IDEAL: List[float]
+    ) -> None:
+        ax_time[0].plot(t, x)
+        ax_time[0].set_title("Original Signal in Time Domain")
+        ax_time[0].set_xlabel("Time (s)")
+        ax_time[0].set_ylabel("Amplitude")
+        ax_time[1].plot(t, x_filt)
+        ax_time[1].set_title("Filtered Signal in Time Domain")
+        ax_time[1].set_xlabel("Time (s)")
+        ax_time[1].set_ylabel("Amplitude")
+        ax_time[2].plot(t, x_ideal)
+        ax_time[2].set_title("Ideal Signal in Time Domain")
+        ax_time[2].set_xlabel("Time (s)")
+        ax_time[2].set_ylabel("Amplitude")
+
+        ax_freq[0].plot(f, X)
+        # ax_freq[0].set_xlim(-2, 2)
+        ax_freq[0].set_ylim(0, 1000)
+        ax_freq[0].set_title("Original Signal in Frequency Domain")
+        ax_freq[0].set_xlabel("Sample/s")
+        ax_freq[0].set_ylabel("Magnitude")
+        ax_freq[1].plot(f, X_FILT)
+        # ax_freq[1].set_xlim(-2, 2)
+        ax_freq[1].set_ylim(0, 1000)
+        ax_freq[1].set_title("Filtered Signal in Frequency Domain")
+        ax_freq[1].set_xlabel("Sample/s")
+        ax_freq[1].set_ylabel("Magnitude")
+        ax_freq[2].plot(f, X_IDEAL)
+        # ax_freq[2].set_xlim(-2, 2)
+        ax_freq[2].set_ylim(0, 1000)
+        ax_freq[2].set_title("Ideal Signal in Frequency Domain")
+        ax_freq[2].set_xlabel("Sample/s")
+        ax_freq[2].set_ylabel("Magnitude")
+
+    def plot_filtered_noise(self, plot_filenames: Tuple[str, str, str]):
+        t = []
+        samples = np.empty([3, 0], np.ndarray)
+        filtered = np.empty([3, 0], np.ndarray)
+        ideal = np.empty([3, 0], np.ndarray)
+        for info in self.frame_info:
+            est_lead_pos = info["est_lead_pos"]
+            est_ego_pos = info["est_ego_pos"]
+            sim_lead_pos = info["sim_lead_pos"]
+            sim_ego_pos = info["sim_ego_pos"]
+            filtered_dist = info["extra_filtered_dist"]
+            if not est_lead_pos or not est_ego_pos or not sim_lead_pos or not sim_ego_pos or not filtered_dist:
+                continue
+            t.append(info["extra_timestamp"])
+            samples = np.hstack([samples, (np.array(est_lead_pos) - np.array(est_ego_pos)).reshape([3,1])])
+            filtered = np.hstack([filtered, np.array(filtered_dist).reshape([3,1])])
+            ideal = np.hstack([ideal, (np.array(sim_lead_pos) - np.array(sim_ego_pos)).reshape([3,1])])
+
+        if not t:
+            return
+
+        t0 = t[0]
+        for i, ti in enumerate(t):
+            t[i] = (ti - t0)*1e-9
+
+        # Move to frequnecy domain
+        for dim in range(3):
+            f = fft.fftshift(fft.fftfreq(len(t), self.fs)).tolist()
+            X = fft.fftshift(np.abs(fft.fft(samples[dim, :])))        # type: ignore
+            X_FILT = fft.fftshift(np.abs(fft.fft(filtered[dim, :])))  # type: ignore
+            X_IDEAL = fft.fftshift(np.abs(fft.fft(ideal[dim, :])))    # type: ignore
+
+            fig = plt.figure(figsize=(20, 25))
+            axes = fig.subplots(3,2)
+            axt: List[plt.Axes] = axes[:, 0] # type: ignore
+            axf: List[plt.Axes] = axes[:, 1] # type: ignore
+            self._plot_filtered_noise(axt, axf, t, samples[dim, :].tolist(), filtered[dim, :].tolist(), ideal[dim, :].tolist(), f, X, X_FILT, X_IDEAL)
+            fig.tight_layout()
+            fig.savefig(plot_filenames[dim])
 
 class TerminalProgress():
     def __init__(self,

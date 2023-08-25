@@ -1,4 +1,5 @@
 from typing import List, Tuple, Dict, Any
+import warnings
 
 import json
 import airsim
@@ -7,6 +8,16 @@ from project_types import Filter_t, Motion_model_t, Gimbal_t
 
 def get_gimbal_config() -> Gimbal_t:
     client = airsim.MultirotorClient()
+    try:
+        client.ping()
+    except:
+        warnings.warn("No access to AirSim client, no Gimbal will be used!")
+        return {
+            "pitch": False,
+            "roll": False,
+            "yaw": False
+        }
+
     settings_str = client.getSettingsString()
     if settings_str is None:
         raise Exception("Unable to recover the settings!")
@@ -19,13 +30,13 @@ def get_gimbal_config() -> Gimbal_t:
         return gimbal
     settings = settings["Gimbal"]
     if (not ("Stabilization" in settings)):
-        Warning("No Stabilation found in AirSim settings, no gibal will be used!")
+        warnings.warn("No Stabilation found in AirSim settings, no gibal will be used!")
         return gimbal
     for key in ["Stabilization", "Pitch", "Roll", "Yaw"]:
         if not key in settings:
             continue
         if settings[key] != 0 and settings[key] != 1:
-            Warning(f"Only values {{0,1}} are supported for {key}, any non-zero value will be treated as 1!")
+            warnings.warn(f"Only values {{0,1}} are supported for {key}, any non-zero value will be treated as 1!")
         if key != "Stabilization" and settings[key] != 0:
             gimbal[key.lower()] = True
     return gimbal

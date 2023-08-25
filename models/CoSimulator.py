@@ -223,7 +223,7 @@ class CoSimulator():
         # self.egoUAV.advanceUsingFilter(dt=(1/self.config.filter_freq_Hz))
 
     def export_graphs(self):
-        gl = GraphLogs(frame_info=self.logger.updated_info_per_frame)
+        gl = GraphLogs(frame_info=self.logger.updated_info_per_frame, fs=(1/self.config.camera_fps))
         gl.graph(self.config.camera_fps, graph_type="position", axis="all", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "ego_pos.png"))
         gl.graph(self.config.camera_fps, graph_type="position", axis="x", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "ego_posx.png"))
         gl.graph(self.config.camera_fps, graph_type="position", axis="y", vehicle_name="EgoUAV", filename=os.path.join(self.logger.parent_folder, "ego_posy.png"))
@@ -250,6 +250,8 @@ class CoSimulator():
         gl.plot_PID_samples(os.path.join(self.logger.parent_folder, "PIDs.png"))
 
         gl.plot_movement_3d(filename=os.path.join(self.logger.parent_folder,"movement.png"), path=self.leading_path)
+
+        gl.plot_filtered_noise(tuple([os.path.join(self.logger.parent_folder, x) for x in ["noise_x.png", "noise_y.png", "noise_z.png"]]))
 
     def finalize(self, status: Status_t):
         if self.done == True:

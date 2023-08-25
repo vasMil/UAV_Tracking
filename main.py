@@ -29,3 +29,14 @@ if __name__ == '__main__':
         shutil.rmtree(co_sim.logger.parent_folder)
     finally:
         co_sim.finalize("Time's up")
+
+# import pickle
+# from models.logger import GraphLogs
+
+# with open("recordings/20230825_132121/log.pkl", 'rb') as f:
+#     frame_info = pickle.load(f)
+
+# gl = GraphLogs(frame_info, 1/30)
+# gl.plot_filtered_noise(("recordings/20230825_132121/noise_x.png",
+#                         "recordings/20230825_132121/noise_y.png",
+#                         "recordings/20230825_132121/noise_z.png"))

@@ -622,17 +622,23 @@ class GraphLogs:
         p_points = np.empty([3,0])
         i_points = np.empty([3,0])
         d_points = np.empty([3,0])
+        none_cnt = 0
         none_list = [None, None, None]
         times = []
         for info in self.frame_info:
             cur_p = info["extra_pid_p"]
             cur_i = info["extra_pid_i"]
             cur_d = info["extra_pid_d"]
+            if not (cur_p and cur_i and cur_d):
+                none_cnt += 1
             p_points = np.hstack([p_points, np.array(cur_p if cur_p else none_list).reshape([3,1])])
             i_points = np.hstack([i_points, np.array(cur_i if cur_i else none_list).reshape([3,1])])
             d_points = np.hstack([d_points, np.array(cur_d if cur_d else none_list).reshape([3,1])])
             times.append(info["extra_timestamp"])
         
+        if none_cnt == len(times):
+            return
+
         t0 = times[0]
         for i, timestamp in enumerate(times):
             times[i] = (timestamp - t0)*1e-9

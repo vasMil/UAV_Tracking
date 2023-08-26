@@ -55,7 +55,7 @@ class PIDController():
                          method: Literal["Muvva", "focal_length", "cheat"]
         ) -> np.ndarray:
         if method == "Muvva":
-            return ego_pos + np.diag([-0.05, -6., 3.5]) @ np.array([[50*18 - bbox.area],
+            return ego_pos + np.diag([-0.05, -6., 3.5]) @ np.array([[46*13 - bbox.area],
                                                               [IMG_WIDTH/2 - bbox.x_center],
                                                               [IMG_HEIGHT/2 - bbox.y_center]])
         elif method == "focal_length":
@@ -99,15 +99,10 @@ class PIDController():
             self.lost_meas_cnt += 1
             return (self.prev_control, 0., estInfo)
 
-        td_state = self.bbox_to_td_state(bbox, ego_pos, "focal_length")
-        estInfo["leadingUAV_position"] = tuple(td_state.squeeze().tolist())
-        dist = td_state - ego_pos
+        td_state = self.bbox_to_td_state(bbox, ego_pos, "Muvva")
+        # estInfo["leadingUAV_position"] = tuple(td_state.squeeze().tolist())
 
-        if self.filter:
-            dist = self.filter.filter_sample(td_state - ego_pos)
-            estInfo["extra_filtered_dist"] = tuple(dist.tolist())
-
-        error = np.array(dist).reshape([3,1]) - np.array([[3.5], [0], [0]])
+        error = td_state - ego_pos
 
         dt = (self.lost_meas_cnt+1) * self.dt
         self.lost_meas_cnt = 0
@@ -121,12 +116,13 @@ class PIDController():
         estInfo["extra_pid_i"] = tuple(self.integrator.squeeze().tolist())
 
         # Derivative
-        self.differentiator = (error - self.prev_error) / dt
+        self.differentiator = np.multiply(self.Kd, (error - self.prev_error) / dt)
         estInfo["extra_pid_d"] = tuple(self.differentiator.squeeze().tolist())
         estInfo["egoUAV_target_velocity"] = tuple(self.differentiator.squeeze().tolist())
 
         # Calculate the output
         control = proportional + self.integrator + self.differentiator
+        # control = self.clamp(proportional + self.integrator + self.differentiator, mode='sep_axis')
         estInfo["egoUAV_target_velocity"] = tuple(control.squeeze().tolist())
 
         self.prev_control = control

@@ -47,9 +47,9 @@ class EgoUAV(UAV):
         #                              use_pepper_filter=use_pepper_filter)
         self.controller = PIDController(vel_magn=vel_magn,
                                         dt=(1/inference_freq_Hz),
-                                        Kp=np.array([10., 1., 4.]),
-                                        Ki=np.array([1., 1., 1.]),
-                                        Kd=np.array([2., 1., 1.]),
+                                        Kp=np.array([-0., 10., -1.]),
+                                        Ki=np.array([-0., 2, -0.5]),
+                                        Kd=np.array([-0., 4., -1.]),
                                         cutoff_freqs=np.array([0, 0, 0]))
 
 

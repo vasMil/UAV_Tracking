@@ -1,11 +1,14 @@
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Callable, Union
 import os
-from pprint import pprint
+
+import json
 
 import torch
 import torch.nn as nn
 import torch.backends.cudnn
 import torch_pruning as tp
+
+import matplotlib.pyplot as plt
 
 from nets.DetectionNets import Detection_SSD
 from nets.DetectionNetBench import DetectionNetBench
@@ -166,6 +169,7 @@ def get_model_stats(pruned_net: DetectionNetBench,
     ) -> Pruned_model_stats_t:
     model_stats: Pruned_model_stats_t = {
         "num_params": 0,
+        "model_id": pruned_net.model_id,
         "flops": 0,
         "layer_params": count_layers_params(pruned_net.model),
         "map_dict": pruned_net.mAP_dicts[-1][1],
@@ -192,8 +196,9 @@ def get_pruning_report(pruned_models: List[str],
                        train_folder: str,
                        train_json: str,
                        test_folder: str,
-                       test_json: str
-    ):
+                       test_json: str,
+                       out_file: str
+    ) -> List[Pruned_model_stats_t]:
     if len(pruned_models) != len(finetuned_checkpoints):
         raise ValueError("pruned_models and finetuned_checkpoints should have the same length")
     # Load the original net and extract it's stats
@@ -205,13 +210,47 @@ def get_pruning_report(pruned_models: List[str],
     orig_stats = get_model_stats(ssd)
     del ssd
 
+    stats = []
     for model, checkpoint in zip(pruned_models, finetuned_checkpoints):
-        print(f"\nStats for: {model.split('/')[-2]}")
-        pruned_ssd = DetectionNetBench(model_id="",
+        model_id = model.split('/')[-2]
+        pruned_ssd = DetectionNetBench(model_id=model_id,
                                        model_path=model,
                                        root_train_dir=train_folder,
                                        root_test_dir=test_folder,
                                        json_train_labels=train_json,
                                        json_test_labels=test_json,
                                        checkpoint_path=checkpoint)
-        pprint(get_model_stats(pruned_ssd, orig_stats))        
+        stats.append(get_model_stats(pruned_ssd, orig_stats))
+    
+    with open(out_file, 'w') as f:
+        json.dump(stats, f)
+    return stats
+
+def plot_report(stats: Optional[List[Pruned_model_stats_t]],
+                plotx_key: Callable[[Pruned_model_stats_t], Union[float, int]],
+                ploty_key: Callable[[Pruned_model_stats_t], Union[float, int]],
+                x_label: str,
+                y_label: str,
+                plot_filename: str,
+                stats_path: Optional[str] = None
+):
+    if stats_path is None and stats is None:
+        raise ValueError("Either stats_path or stats should not be None")
+    elif stats_path and stats:
+        raise Warning("Both stats_path and stats where provided, stats object will be used!")
+    elif stats_path:
+        with open(stats_path, 'r') as f:
+            stats = json.load(f)
+
+    stats.sort(key=lambda stat: plotx_key(stat)) # type: ignore
+    fig, ax = plt.subplots(1, 1)
+    x_vals = [plotx_key(stat) for stat in stats] # type: ignore
+    y_vals = [ploty_key(stat) for stat in stats] # type: ignore
+    id_vals = [stat["model_id"] for stat in stats] # type: ignore
+    ax.plot(x_vals, y_vals)
+    ax.scatter(x_vals, y_vals)
+    # for i, label in enumerate(id_vals):
+    #     plt.annotate(label, (x_vals[i], y_vals[i]), textcoords="offset points", xytext=(0,10), ha='center')
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    fig.savefig(plot_filename)

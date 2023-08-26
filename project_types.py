@@ -140,6 +140,7 @@ class Infer_freqs_t(TypedDict):
     eval_avg_freq_Hz: float
 
 class Pruned_model_stats_t(TypedDict):
+    model_id: str
     num_params: int
     flops: int
     layer_params: List[int]

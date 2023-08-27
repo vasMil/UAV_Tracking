@@ -102,26 +102,29 @@ class PIDController():
         td_state = self.bbox_to_td_state(bbox, ego_pos, "Muvva")
         # estInfo["leadingUAV_position"] = tuple(td_state.squeeze().tolist())
 
-        error = td_state - ego_pos
+        error = ego_pos - td_state
 
-        dt = (self.lost_meas_cnt+1) * self.dt
+        # dt = (self.lost_meas_cnt+1) * self.dt
+        dt = self.dt
         self.lost_meas_cnt = 0
 
         # Proportional
-        proportional = np.multiply(self.Kp, error)
+        proportional = error
         estInfo["extra_pid_p"] = tuple(proportional.squeeze().tolist())
 
         # Integrator
-        self.integrator = np.multiply(self.Ki * dt, error)
+        self.integrator += np.multiply(error, dt)
         estInfo["extra_pid_i"] = tuple(self.integrator.squeeze().tolist())
 
         # Derivative
-        self.differentiator = np.multiply(self.Kd, (error - self.prev_error) / dt)
+        self.differentiator = (error - self.prev_error) / dt
         estInfo["extra_pid_d"] = tuple(self.differentiator.squeeze().tolist())
         estInfo["egoUAV_target_velocity"] = tuple(self.differentiator.squeeze().tolist())
 
         # Calculate the output
-        control = proportional + self.integrator + self.differentiator
+        control = self.clamp(np.multiply(self.Kp, proportional)
+                             + np.multiply(self.Ki, self.integrator) 
+                             + np.multiply(self.Kd, self.differentiator), mode='sep_axis')
         # control = self.clamp(proportional + self.integrator + self.differentiator, mode='sep_axis')
         estInfo["egoUAV_target_velocity"] = tuple(control.squeeze().tolist())
 

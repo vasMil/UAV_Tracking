@@ -103,12 +103,12 @@ class CoSimulator():
         self.orient, self.prev_orient = self.egoUAV.getPitchRollYaw(), self.egoUAV.getPitchRollYaw()
 
         # Move up so you minimize shadows
-        self.leadingUAV.moveByVelocityAsync(0, 0, -5, 5)
-        self.egoUAV.moveByVelocityAsync(0, 0, -5, 5)
-        self.egoUAV.lastAction.join()
-        self.leadingUAV.lastAction.join()
+        # self.leadingUAV.moveByVelocityAsync(0, 0, -5, 5)
+        # self.egoUAV.moveByVelocityAsync(0, 0, -5, 5)
+        # self.egoUAV.lastAction.join()
+        # self.leadingUAV.lastAction.join()
         # Wait for the vehicles to stabilize
-        time.sleep(20/CLOCK_SPEED)
+        # time.sleep(20/CLOCK_SPEED)
 
         # Pause the simulation
         self.client.simPause(True)

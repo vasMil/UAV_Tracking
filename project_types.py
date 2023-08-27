@@ -148,7 +148,7 @@ class Pruned_model_stats_t(TypedDict):
     losses: Losses_dict_t
     epoch: int
     infer_freqs: Infer_freqs_t
+    layer_sparsity: List[float]
     sparsity: Optional[float]
-    layer_sparsity: Optional[List[float]]
     theoretical_speedup: Optional[float]
     actual_speedup: Optional[float]

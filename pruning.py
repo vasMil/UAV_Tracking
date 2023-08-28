@@ -10,6 +10,7 @@ import torch.backends.cudnn
 import torch_pruning as tp
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 from nets.DetectionNets import Detection_SSD
 from nets.DetectionNetBench import DetectionNetBench
@@ -184,7 +185,7 @@ def get_model_stats(pruned_net: DetectionNetBench,
         "epoch": pruned_net.epoch,
         "infer_freqs": pruned_net.get_inference_frequency(1000, 1000, True),
         "sparsity": None,
-        "layer_sparsity": extract_sparsity_from_model_id(pruned_net.model_id),
+        "layer_sparsity": extract_sparsity_from_model_id(pruned_net.model_id) if orig_model_stats else [1]*4,
         "theoretical_speedup": None,
         "actual_speedup": None
     }
@@ -275,7 +276,8 @@ def layer_group_sparsity_heatmap(stats: List[Pruned_model_stats_t], filename: st
         if per_glayer_sparsities[0] != per_glayer_sparsities[layer]:
             raise Exception("Not all layers have tests for the same sparsities")
 
-    group_layer_sparsities = per_glayer_sparsities[0]
+    # group_layer_sparsities = per_glayer_sparsities[0]
+    group_layer_sparsities = [0.8, 0.85, 0.9, 0.95]
     
     # Shape the heatmap (i.e. how many group-layer sparsities on the rows and how many on cols)
     # For example if there are 4 diff sparsities for each group-layer, the sparsities for the
@@ -285,8 +287,8 @@ def layer_group_sparsity_heatmap(stats: List[Pruned_model_stats_t], filename: st
     num_glayers_in_col = num_layers - num_glayers_in_row
     num_rows = num_glayers_in_row**len(group_layer_sparsities)
     num_cols = num_glayers_in_col**len(group_layer_sparsities)
-    row_labels = list(product(group_layer_sparsities, repeat=num_rows))
-    col_labels = list(product(group_layer_sparsities, repeat=num_cols))
+    row_labels = list(product(group_layer_sparsities, repeat=num_glayers_in_row))
+    col_labels = list(product(group_layer_sparsities, repeat=num_glayers_in_col))
     
     heatmap = np.zeros([num_rows, num_cols])
     for stat in stats:
@@ -295,6 +297,9 @@ def layer_group_sparsity_heatmap(stats: List[Pruned_model_stats_t], filename: st
         col_idx = col_labels.index(tuple(sparsities[num_glayers_in_row:]))
         heatmap[row_idx, col_idx] = stat["map_dict"]["map_75"]
 
-    fig, ax = plt.subplots()
-    ax.imshow(heatmap)
+    fig = plt.figure(figsize=(20, 14))
+    ax = fig.subplots()
+    palette = sns.color_palette("coolwarm", as_cmap=True)
+    sns.heatmap(heatmap, ax=ax, xticklabels=row_labels, yticklabels=col_labels, annot=True, linewidth=.5, cmap=palette) # type: ignore
+    ax.xaxis.tick_top()
     fig.savefig(filename)

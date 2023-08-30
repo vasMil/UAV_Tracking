@@ -2,7 +2,7 @@ from typing import Tuple
 import os
 from itertools import product
 
-from pruning import prune_ssd, layer_group_sparsity_heatmap, load_pruning_report, save_pruning_report, get_stats_4_models_in_folder
+from pruning import prune_ssd, layer_group_sparsity_heatmap, load_pruning_report, save_pruning_report, get_stats_4_models_in_folder, impact_of_sparsity_for_grouplayer
 from nets.DetectionNets import Detection_SSD
 
 def sparsities_to_folder_name(sparsities: Tuple[float, float, float, float]) -> str:
@@ -40,5 +40,8 @@ if __name__ == '__main__':
     #                                      test_folder="data/empty_map/test",
     #                                      test_json="data/empty_map/test/bboxes.json")
 
-    stats = load_pruning_report("temp_report.json")
-    layer_group_sparsity_heatmap(stats, "test.png")
+    # save_pruning_report(stats, "nets/checkpoints/pruning/ssd_pretrained/finetuning/stats_report.json")
+    # layer_group_sparsity_heatmap(stats, "nets/checkpoints/pruning/ssd_pretrained/finetuning/stats_heatmap.png")
+
+    stats = load_pruning_report("./temp_report.json")
+    impact_of_sparsity_for_grouplayer(stats, 2, [0.8, 0.8, 0.8], "impact.png")

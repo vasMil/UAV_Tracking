@@ -2,6 +2,7 @@ from typing import List, Tuple, Optional, Callable, Union
 import os
 import math
 from itertools import product
+from copy import deepcopy
 
 import json
 import numpy as np
@@ -276,8 +277,7 @@ def layer_group_sparsity_heatmap(stats: List[Pruned_model_stats_t], filename: st
         if per_glayer_sparsities[0] != per_glayer_sparsities[layer]:
             raise Exception("Not all layers have tests for the same sparsities")
 
-    # group_layer_sparsities = per_glayer_sparsities[0]
-    group_layer_sparsities = [0.8, 0.85, 0.9, 0.95]
+    group_layer_sparsities = per_glayer_sparsities[0]
     
     # Shape the heatmap (i.e. how many group-layer sparsities on the rows and how many on cols)
     # For example if there are 4 diff sparsities for each group-layer, the sparsities for the
@@ -302,4 +302,63 @@ def layer_group_sparsity_heatmap(stats: List[Pruned_model_stats_t], filename: st
     palette = sns.color_palette("coolwarm", as_cmap=True)
     sns.heatmap(heatmap, ax=ax, xticklabels=row_labels, yticklabels=col_labels, annot=True, linewidth=.5, cmap=palette) # type: ignore
     ax.xaxis.tick_top()
+    ax.set_xlabel(f"Layers: {list(range(num_glayers_in_row))}")
+    ax.set_ylabel(f"Layers: {list(range(num_glayers_in_row, num_layers))}")
     fig.savefig(filename)
+    plt.close(fig)
+
+def impact_of_sparsity_for_grouplayer(stats: List[Pruned_model_stats_t],
+                                      grouplayer_num: int,
+                                      other_grouplayer_sparsities: List[float],
+                                      filename: str,
+                                      all_sparsities: List[float] = [0.8, 0.85, 0.9, 0.95],
+    ) -> None:
+    """
+    For a fixed sparsity at all group-layers, except one,
+    plot the mAP for all different sparsities for that one group-layer.
+
+    Args:
+    stats: The stats as returned by get_stats_4_models_in_folder().
+    grouplayer_num: The number of the "special" group-layer (not index, start from 1).
+    other_grouplayer_sparsities: The fixed sparsities of the other group-layers\
+    must be sorted by the number of the corresponding group-layer.
+    all_sparsities: All different sparsities for the "special" group-layer.
+    """
+    # Construct a list with all possible sparsity lists
+    # i.e. For each item in the outer list the other_layer_sparsities will be constant
+    # and the sparsity of the layer (layer_num) will vary.
+    diff_sparsity_setups = []
+    for sparsity in all_sparsities:
+        temp = other_grouplayer_sparsities.copy()
+        temp.insert(grouplayer_num-1, sparsity)
+        diff_sparsity_setups.append(temp)
+
+    # Organize the useful (sparsity, mAP) tuples into a list
+    useful_mAPs: List[Tuple[float, float]] = []
+    for stat in stats:
+        if stat["layer_sparsity"] in diff_sparsity_setups:
+            useful_mAPs.append((stat["layer_sparsity"][grouplayer_num-1], stat["map_dict"]["map_75"]))
+
+    # Sort the list by the sparsity of the "special" group-layer
+    useful_mAPs.sort(key=lambda x: x[0])
+    x_vals = [u[0] for u in useful_mAPs]
+    y_vals = [u[1] for u in useful_mAPs]
+    fig = plt.figure()
+    ax = fig.subplots()
+    ax.plot(x_vals, y_vals)
+    ax.scatter(x_vals, y_vals)
+    ax.set_xlabel(f"All different sparsities of group-layer {grouplayer_num}", labelpad=10)
+    str_all_sparsities = [str(x) for x in all_sparsities]
+    ax.set_xticks(all_sparsities)
+    ax.set_xticklabels(str_all_sparsities)
+    str_other_grouplayer_sparsities = [str(x) for x in other_grouplayer_sparsities]
+    str_other_grouplayer_sparsities.insert(grouplayer_num-1, 'x')
+    formated_sparsities = ", ".join(str_other_grouplayer_sparsities)
+    ax.set_ylabel(f"mAPs for the sparsity setup: {formated_sparsities}", labelpad=10)
+    ax.set_yticks([y/10 for y in range(0, 11)])
+    ax.set_title(f"Impact of pruning group-layer {grouplayer_num} at different sparsities,"
+                 f"\nwhile holding the other group-layer sparsities constant",
+                 pad=20)
+    plt.subplots_adjust(top=0.85, bottom=0.15, left=0.15, right=0.85)
+    fig.savefig(filename)
+    plt.close(fig)

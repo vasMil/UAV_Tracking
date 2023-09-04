@@ -261,7 +261,10 @@ def plot_report(stats: List[Pruned_model_stats_t],
     ax.set_ylabel(y_label)
     fig.savefig(plot_filename)
 
-def layer_group_sparsity_heatmap(stats: List[Pruned_model_stats_t], filename: str):
+def layer_group_sparsity_heatmap(stats: List[Pruned_model_stats_t],
+                                 filename: str,
+                                 map_key: str = "map_75"
+    ):
     # Extract the different sparsities at which each layer is evaluated
     num_layers = len(stats[0]["layer_sparsity"])
     per_glayer_sparsities = [[] for _ in range(num_layers)]
@@ -295,7 +298,7 @@ def layer_group_sparsity_heatmap(stats: List[Pruned_model_stats_t], filename: st
         sparsities = stat["layer_sparsity"]
         row_idx = row_labels.index(tuple(sparsities[:num_glayers_in_row]))
         col_idx = col_labels.index(tuple(sparsities[num_glayers_in_row:]))
-        heatmap[row_idx, col_idx] = stat["map_dict"]["map_75"]
+        heatmap[row_idx, col_idx] = stat["map_dict"][map_key]
 
     fig = plt.figure(figsize=(20, 14))
     ax = fig.subplots()
@@ -304,6 +307,7 @@ def layer_group_sparsity_heatmap(stats: List[Pruned_model_stats_t], filename: st
     ax.xaxis.tick_top()
     ax.set_xlabel(f"Layers: {list(range(num_glayers_in_row))}")
     ax.set_ylabel(f"Layers: {list(range(num_glayers_in_row, num_layers))}")
+    ax.set_title(f"{map_key} for different group-layer sparsity configurations, for sparsities \u2208 {group_layer_sparsities}", pad=20)
     fig.savefig(filename)
     plt.close(fig)
 
@@ -312,6 +316,7 @@ def impact_of_sparsity_for_grouplayer(stats: List[Pruned_model_stats_t],
                                       other_grouplayer_sparsities: List[float],
                                       filename: str,
                                       all_sparsities: List[float] = [0.8, 0.85, 0.9, 0.95],
+                                      map_key: str = "map_75"
     ) -> None:
     """
     For a fixed sparsity at all group-layers, except one,
@@ -337,7 +342,7 @@ def impact_of_sparsity_for_grouplayer(stats: List[Pruned_model_stats_t],
     useful_mAPs: List[Tuple[float, float]] = []
     for stat in stats:
         if stat["layer_sparsity"] in diff_sparsity_setups:
-            useful_mAPs.append((stat["layer_sparsity"][grouplayer_num-1], stat["map_dict"]["map_75"]))
+            useful_mAPs.append((stat["layer_sparsity"][grouplayer_num-1], stat["map_dict"][map_key]))
 
     # Sort the list by the sparsity of the "special" group-layer
     useful_mAPs.sort(key=lambda x: x[0])
@@ -356,7 +361,7 @@ def impact_of_sparsity_for_grouplayer(stats: List[Pruned_model_stats_t],
     formated_sparsities = ", ".join(str_other_grouplayer_sparsities)
     ax.set_ylabel(f"mAPs for the sparsity setup: {formated_sparsities}", labelpad=10)
     ax.set_yticks([y/10 for y in range(0, 11)])
-    ax.set_title(f"Impact of pruning group-layer {grouplayer_num} at different sparsities,"
+    ax.set_title(f"Impact on {map_key} of pruning group-layer {grouplayer_num} at different sparsities,"
                  f"\nwhile holding the other group-layer sparsities constant",
                  pad=20)
     plt.subplots_adjust(top=0.85, bottom=0.15, left=0.15, right=0.85)

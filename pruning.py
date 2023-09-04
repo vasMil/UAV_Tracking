@@ -2,19 +2,22 @@ from typing import List, Tuple, Optional, Callable, Union
 import os
 import math
 from itertools import product
-from copy import deepcopy
 
 import json
 import numpy as np
 import torch.nn as nn
 import torch.backends.cudnn
 import torch_pruning as tp
+from pymoo.algorithms.moo.nsga2 import NSGA2
+from pymoo.optimize import minimize
+from pymoo.termination.default import DefaultMultiObjectiveTermination
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 from nets.DetectionNets import Detection_SSD
 from nets.DetectionNetBench import DetectionNetBench
+from models.pareto import PruningSpeedupAccuracyProblem, SparsitySampling, SparsityCrossover, SparsityMutation, SparsityDuplicateElimination
 from config import DefaultTrainingConfig
 from project_types import Pruned_model_stats_t
 
@@ -367,3 +370,47 @@ def impact_of_sparsity_for_grouplayer(stats: List[Pruned_model_stats_t],
     plt.subplots_adjust(top=0.85, bottom=0.15, left=0.15, right=0.85)
     fig.savefig(filename)
     plt.close(fig)
+
+def plot_pruning_pareto(stats: List[Pruned_model_stats_t], filename: str, map_key: str = "map_75") -> None:
+    # Find the pareto
+    problem = PruningSpeedupAccuracyProblem(stats, map_key=map_key)
+    algorithm = NSGA2(pop_size=20,
+                      sampling=SparsitySampling(),                          # type: ignore
+                      crossover=SparsityCrossover(),                        # type: ignore
+                      mutation=SparsityMutation(),                          # type: ignore
+                      eliminate_duplicates=SparsityDuplicateElimination())
+
+    res = minimize(problem=problem,
+                   algorithm=algorithm,
+                   termination=('n_gen', 100))
+    pareto_accuracy = np.abs(res.F[:,0]) # type: ignore
+    pareto_theoretical_speedup = np.abs(res.F[:,1]) # type: ignore
+    pareto_sparsities = res.X.squeeze() # type: ignore
+
+    # Sort the parrallel arrays above, so they plot nicely on the x axis
+    sorted_indices = np.argsort(pareto_theoretical_speedup)
+    pareto_theoretical_speedup = pareto_theoretical_speedup[sorted_indices]
+    pareto_accuracy = pareto_accuracy[sorted_indices]
+    pareto_sparsities = pareto_sparsities[sorted_indices]
+    # Extract all stats
+    accuracies = []
+    theoretical_speedups = []
+    for stat in stats:
+        accuracies.append(stat["map_dict"][map_key])
+        theoretical_speedups.append(stat["theoretical_speedup"])
+
+    # Plot all data points and highlight the pareto
+    fig = plt.figure()
+    ax = fig.subplots()
+    ax.scatter(x=theoretical_speedups, y=accuracies)
+    ax.plot(pareto_theoretical_speedup, pareto_accuracy, marker='x', linestyle='-', color="red")
+    # # Add labels to the data points
+    # for i, label in enumerate(pareto_sparsities):
+    #     plt.annotate(label, (pareto_theoretical_speedup[i], pareto_accuracy[i]), textcoords="offset points", xytext=(0,10), ha='center')
+    
+    ax.set_xlabel("Theoretical Speedup (%)", labelpad=10)
+    ax.set_ylabel(f"{map_key} Accuracy", labelpad=10)
+    ax.set_title("Pareto front for different sparsities at different layer-groups", pad=20)
+    fig.savefig(filename, format="svg")
+    plt.close(fig)
+    print(pareto_sparsities)

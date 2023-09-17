@@ -55,8 +55,6 @@ class DetectionNetBench():
                  model: Optional[nn.Module] = None,
                  model_path: Optional[str] = None,
                  config: DefaultTrainingConfig = DefaultTrainingConfig(),
-                 root_train_dir: Optional[str] = None, json_train_labels: Optional[str] = None,
-                 root_test_dir: Optional[str] = None, json_test_labels: Optional[str] = None,
                  checkpoint_path: Optional[str] = None,
                  load_only_weights: bool = False
             ) -> None:
@@ -67,7 +65,8 @@ class DetectionNetBench():
             1. model_id
             2. model or model_path
             3. config
-            4. root_train_dir, root_test_dir, json_train_labels, json_test_labels
+            4. And config should provide valid:
+            root_train_dir, root_test_dir, json_train_labels, json_test_labels
         - If only used for evaluation, you need to provide:
             1. model_id
             2. model or model_path
@@ -77,7 +76,8 @@ class DetectionNetBench():
             1. model_id
             2. model or model_path
             3. checkpoint
-            4. root_test_dir and json_test_labels
+            4. And config should provide valid:
+            root_test_dir and json_test_labels
 
         Args:
         - model_id: A string to use when profiling or plotting losses
@@ -87,14 +87,6 @@ class DetectionNetBench():
         model argument is used.
         - config: The training configuration that will be used, packaged into
         a DefaultTrainingConfig object.
-        - root_train_dir: The root directory, where all training image
-                          files are located.
-        - json_train_labels: Path to the json file containing the bboxes
-        along with their labels for the training data.
-        - root_test_dir: The root directory, where all testing image
-        files are located.
-        - json_test_labels: Path to the json file containing the bboxes
-        along with their labels for the test data.
         - load_only_weights: Used only when checkpoint_path is provided.
         If True it only loads the model.state_dict to the model (i.e. weights
         and biases) and all other information like losses, epochs, optimizer.state_dict
@@ -110,21 +102,21 @@ class DetectionNetBench():
             raise Exception("Only one of the arguments model, model_path is allowed to be None")
 
         # Decide what methods can be executed based on the arguments provided
-        if (root_train_dir and json_train_labels and
-            root_test_dir and json_test_labels
+        if (config.root_train_dir and config.json_train_labels and
+            config.root_test_dir and config.json_test_labels
         ):
             self.can_train = True
-        if root_test_dir and json_test_labels:
+        if config.root_test_dir and config.json_test_labels:
             self.can_test = True
 
         # Organize the arguments into dictionaries
         self.root_dirs = {
-            "train": root_train_dir, 
-            "val": root_test_dir
+            "train": config.root_train_dir, 
+            "val": config.root_test_dir
         }
         self.json_labels = {
-            "train": json_train_labels, 
-            "val": json_test_labels
+            "train": config.json_train_labels, 
+            "val": config.json_test_labels
         }
         
         # NVIDIAs performance tuning guide:
@@ -258,6 +250,8 @@ class DetectionNetBench():
         a Checkpoint_t dictionary and use torch to save it
         at the given path.
         """
+        # https://discuss.pytorch.org/t/can-i-deepcopy-a-model/52192/6
+        self.model.to(torch.device("cpu"))
         checkpoint: Checkpoint_t = {
             "model_state_dict": self.model.state_dict(),
             "epoch": self.epoch,
@@ -268,9 +262,14 @@ class DetectionNetBench():
             "mAPs": self.mAP_dicts
         }
         torch.save(checkpoint, checkpoint_path)
+        self.model.to(self.device)
 
     def save_model(self, model_path: str) -> None:
-        torch.save(self.model.to(torch.device("cpu")), model_path)
+        # Move the model to the cpu before saving it (enhances portability)
+        self.model.to(torch.device("cpu"))
+        torch.save(self.model, model_path)
+        # Move the model back to the device it should be on
+        self.model.to(self.device)
 
     def reset(self, config: Optional[DefaultTrainingConfig] = None):
         if config:
@@ -473,7 +472,7 @@ class DetectionNetBench():
         print(f'Total training time {self.training_time // 60:.0f}m {time_elapsed % 60:.0f}s')
 
     @torch.no_grad()
-    def calculate_metrics(self, preserve_result: bool) -> Dict[int, Dict[str, float]]:
+    def calculate_metrics(self, preserve_result: bool) -> Dict[str, float]:
         if not self.can_test:
             raise Exception("Paths required for testing have not been specified")
 

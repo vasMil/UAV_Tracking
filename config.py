@@ -46,8 +46,16 @@ class DefaultTrainingConfig():
                  prof_warmup: int = 3,
                  prof_active: int = 3,
                  prof_repeat: int = 1,
-                 losses_plot_ylabel: str = "Sum of model's losses"
+                 losses_plot_ylabel: str = "Sum of model's losses",
+                 root_train_dir: Optional[str] = "data/empty_map/train",
+                 json_train_labels: Optional[str] = "data/empty_map/train/bboxes.json",
+                 root_test_dir: Optional[str] = "data/empty_map/test",
+                 json_test_labels: Optional[str] = "data/empty_map/test/bboxes.json"
             ) -> None:
+        self.root_train_dir = root_train_dir
+        self.json_train_labels = json_train_labels
+        self.root_test_dir = root_test_dir
+        self.json_test_labels = json_test_labels
         self.num_epochs = num_epochs
         self.default_batch_size = default_batch_size
         self.num_workers = num_workers

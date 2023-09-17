@@ -211,11 +211,7 @@ def get_stats_4_models_in_folder(parent_folder: str,
                                  test_folder: str,
                                  test_json: str
     ) -> List[Pruned_model_stats_t]:
-    ssd = Detection_SSD(root_train_dir=train_folder,
-                        root_test_dir=test_folder,
-                        json_train_labels=train_json,
-                        json_test_labels=test_json,
-                        checkpoint_path=original_checkpoint)
+    ssd = Detection_SSD(checkpoint_path=original_checkpoint)
     orig_stats = get_model_stats(ssd)
 
     stats = []
@@ -228,10 +224,6 @@ def get_stats_4_models_in_folder(parent_folder: str,
                 raise Exception(f"Checkpoint: {checkpoint} or Model: {model} does not exist!")
             pruned_ssd = DetectionNetBench(model_id=subfolder,
                                            model_path=model,
-                                           root_train_dir=train_folder,
-                                           root_test_dir=test_folder,
-                                           json_train_labels=train_json,
-                                           json_test_labels=test_json,
                                            checkpoint_path=checkpoint)
             stats.append(get_model_stats(pruned_ssd, orig_stats))
     return stats

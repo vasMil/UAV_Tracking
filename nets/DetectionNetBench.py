@@ -270,7 +270,7 @@ class DetectionNetBench():
         torch.save(checkpoint, checkpoint_path)
 
     def save_model(self, model_path: str) -> None:
-        torch.save(self.model, model_path)
+        torch.save(self.model.to(torch.device("cpu")), model_path)
 
     def reset(self, config: Optional[DefaultTrainingConfig] = None):
         if config:

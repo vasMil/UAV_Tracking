@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 
 import json
 import airsim
@@ -74,6 +74,9 @@ class DefaultCoSimulatorConfig():
                  sim_fps: int = 60,
                  simulation_time_s: int = 240,
                  camera_fps: int = 30,
+                 model_id: str = "SSD",
+                 model_path: Optional[str] = None,
+                 checkpoint_path: str = "nets/checkpoints/backup/ssd250.checkpoint",
                  infer_freq_Hz: int = 30,
                  filter_freq_Hz: int = 30,
                  filter_type: Filter_t = "KF",
@@ -111,6 +114,9 @@ class DefaultCoSimulatorConfig():
         self.sim_fps = sim_fps
         self.simulation_time_s = simulation_time_s
         self.camera_fps = camera_fps
+        self.model_id = model_id
+        self.model_path = model_path
+        self.checkpoint_path = checkpoint_path
         self.infer_freq_Hz = infer_freq_Hz
         self.filter_freq_Hz = filter_freq_Hz
         self.filter_type: Filter_t = filter_type

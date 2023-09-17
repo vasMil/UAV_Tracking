@@ -83,6 +83,9 @@ class ExtendedCoSimulatorConfig_t(TypedDict):
     sim_fps: int
     simulation_time_s: int
     camera_fps: int
+    model_id: str
+    model_path: Optional[str]
+    checkpoint_path: str
     infer_freq_Hz: int
     filter_freq_Hz: int
     filter_type: Filter_t

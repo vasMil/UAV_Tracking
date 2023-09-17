@@ -66,6 +66,9 @@ class CoSimulator():
                                          max_vel=config.max_vel,
                                          min_vel=config.min_vel)
             self.egoUAV = EgoUAV(name=EGO_UAV_NAME,
+                                 model_id=config.model_id,
+                                 model_path=config.model_path,
+                                 checkpoint_path=config.checkpoint_path,
                                  inference_freq_Hz=config.infer_freq_Hz,
                                  vel_magn=config.uav_velocity,
                                  weight_vel=config.weight_vel,

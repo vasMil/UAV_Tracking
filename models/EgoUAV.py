@@ -18,7 +18,7 @@ from constants import EGO_UAV_NAME, PORT,\
     SCORE_THRESHOLD
 from models.BoundingBox import BoundingBox
 from nets.DetectionNets import Detection_FasterRCNN
-from nets.DetectionNets import Detection_SSD
+from nets.DetectionNets import Detection_SSD, DetectionNetBench
 from controller.Controller import Controller
 from controller.CheatController import CheatController
 from controller.KalmanFilter import KalmanFilter
@@ -27,7 +27,10 @@ from models.FrameInfo import EstimatedFrameInfo
 class EgoUAV(UAV):
     def __init__(self,
                  name: str = EGO_UAV_NAME,
-                 inference_freq_Hz: int = 1,
+                 inference_freq_Hz: int = 30,
+                 model_id: str = "SSD",
+                 model_path: Optional[str] = None,
+                 checkpoint_path: str = "nets/checkpoints/backup/ssd250.checkpoint",
                  vel_magn: float = 0,
                  filter_type: Filter_t = "KF",
                  motion_model: Motion_model_t = "CA",
@@ -40,10 +43,16 @@ class EgoUAV(UAV):
         # Initialize the NN
         if genmode:
             return
-        # self.net = Detection_FasterRCNN()
-        # self.net.load("nets/checkpoints/rcnn100.checkpoint")
-        self.net = Detection_SSD()
-        self.net.load("nets/checkpoints/ssd/ssd250.checkpoint")
+
+        if model_path is None:
+            # self.net = Detection_FasterRCNN()
+            # self.net.load("nets/checkpoints/rcnn100.checkpoint")
+            self.net = Detection_SSD(checkpoint_path=checkpoint_path)
+        else:
+            self.net = DetectionNetBench(model_id=model_id,
+                                         model_path=model_path,
+                                         checkpoint_path=checkpoint_path)
+
         self.controller = Controller(vel_magn=vel_magn,
                                      dt=(1/inference_freq_Hz),
                                      weight_vel=weight_vel,

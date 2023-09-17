@@ -29,12 +29,12 @@ class PruningSpeedupAccuracyProblem(Problem):
             sparsities = tuple(stat["layer_sparsity"])
             if sparsities in self.indexed_stats.values():
                 raise Exception(f"The setup of sparsities {sparsities} found twice in the given stats list")
-            self.indexed_stats[sparsities] = stat
+            self.indexed_stats[sparsities] = stat # type: ignore
 
     def _evaluate(self, xs, out, *args, **kwargs) -> None:
         res = []
         for x in xs:
-            stat = self.indexed_stats.get(tuple(x.squeeze().tolist()))
+            stat = self.indexed_stats.get(tuple(x.squeeze().tolist())) # type: ignore
             if not stat:
                 raise Exception(f"sparsity {x} was not found in indexed stats")
             if stat["sparsity"] is None or stat["theoretical_speedup"] is None:

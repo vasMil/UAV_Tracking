@@ -1,5 +1,7 @@
 from typing import List, Tuple, Optional, Callable, Union
 import os
+import shutil
+import glob
 import math
 from itertools import product
 
@@ -10,7 +12,6 @@ import torch.backends.cudnn
 import torch_pruning as tp
 from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.optimize import minimize
-from pymoo.termination.default import DefaultMultiObjectiveTermination
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -371,7 +372,39 @@ def impact_of_sparsity_for_grouplayer(stats: List[Pruned_model_stats_t],
     fig.savefig(filename)
     plt.close(fig)
 
-def plot_pruning_pareto(stats: List[Pruned_model_stats_t], filename: str, map_key: str = "map_75") -> None:
+def extract_pareto_stats_using_grouplayer_sparsity(stats: List[Pruned_model_stats_t],
+                                    pareto_sparsities: List[Tuple]
+    ) -> List[Pruned_model_stats_t]:
+    filtered_stats = []
+    encountered_sparsities = []
+
+    for stat in stats:
+        layer_sparsity = tuple(stat["layer_sparsity"])
+
+        if layer_sparsity in pareto_sparsities:
+            if layer_sparsity in encountered_sparsities:
+                raise ValueError(f"Duplicate pareto sparsity: {layer_sparsity}")
+            
+            filtered_stats.append(stat)
+            encountered_sparsities.append(layer_sparsity)
+
+    return filtered_stats
+
+def get_pruning_pareto(stats: List[Pruned_model_stats_t],
+                       map_key: str = "map_75",
+                       min_map: float = 0.1
+                    ) -> List[Pruned_model_stats_t]:
+    """
+    Calculates the pareto front for a discrete set of points.
+    Currently the stats object should contain all combinations of [0.8, 0.85, 0.9, 0.95].
+
+    Args:
+    - stats: The stats of all pruned models as returned by get_stats_4_models_in_folder.
+    - map_key: A key of stats' dictionary map_dict (ex. 'map_75', 'map_50', 'map_large').
+
+    Returns:
+    A List of Pruned_model_stats_t with the stats of the pareto points.
+    """
     # Find the pareto
     problem = PruningSpeedupAccuracyProblem(stats, map_key=map_key)
     algorithm = NSGA2(pop_size=20,
@@ -383,27 +416,45 @@ def plot_pruning_pareto(stats: List[Pruned_model_stats_t], filename: str, map_ke
     res = minimize(problem=problem,
                    algorithm=algorithm,
                    termination=('n_gen', 100))
-    pareto_accuracy = np.abs(res.F[:,0]) # type: ignore
-    pareto_theoretical_speedup = np.abs(res.F[:,1]) # type: ignore
-    pareto_sparsities = res.X.squeeze() # type: ignore
+    pareto_sparsities: np.ndarray = res.X.squeeze()     # type: ignore
+    pareto_stats = extract_pareto_stats_using_grouplayer_sparsity(stats, pareto_sparsities.tolist())
+    
+    filtered_pareto_stats = []
+    for stat in pareto_stats:
+        if stat["map_dict"][map_key] >= min_map:
+            filtered_pareto_stats.append(stat)
 
-    # Sort the parrallel arrays above, so they plot nicely on the x axis
-    sorted_indices = np.argsort(pareto_theoretical_speedup)
-    pareto_theoretical_speedup = pareto_theoretical_speedup[sorted_indices]
-    pareto_accuracy = pareto_accuracy[sorted_indices]
-    pareto_sparsities = pareto_sparsities[sorted_indices]
-    # Extract all stats
+    return filtered_pareto_stats
+
+def plot_pruning_pareto(stats: List[Pruned_model_stats_t], filename: str, map_key: str = "map_75") -> None:
+    # Extract information to plot for all stats (included or not in the pareto)
     accuracies = []
     theoretical_speedups = []
     for stat in stats:
         accuracies.append(stat["map_dict"][map_key])
         theoretical_speedups.append(stat["theoretical_speedup"])
 
+    # Extract information to plot for the pareto points
+    pareto_stats = get_pruning_pareto(stats, map_key=map_key)
+    pareto_sparsities = []
+    pareto_accuracies = []
+    pareto_theoretical_speedups = []
+    for stat in pareto_stats:
+        pareto_sparsities.append(stat["layer_sparsity"])
+        pareto_accuracies.append(stat["map_dict"][map_key])
+        pareto_theoretical_speedups.append(stat["theoretical_speedup"])
+
+    # Sort the parrallel arrays above, so they plot nicely on the x axis
+    sorted_indices = np.argsort(pareto_theoretical_speedups)
+    pareto_theoretical_speedups = pareto_theoretical_speedups[sorted_indices]
+    pareto_accuracies = pareto_accuracies[sorted_indices]
+    pareto_sparsities = pareto_sparsities[sorted_indices]
+
     # Plot all data points and highlight the pareto
     fig = plt.figure()
     ax = fig.subplots()
     ax.scatter(x=theoretical_speedups, y=accuracies)
-    ax.plot(pareto_theoretical_speedup, pareto_accuracy, marker='x', linestyle='-', color="red")
+    ax.plot(pareto_theoretical_speedups, pareto_accuracies, marker='x', linestyle='-', color="red")
     # # Add labels to the data points
     # for i, label in enumerate(pareto_sparsities):
     #     plt.annotate(label, (pareto_theoretical_speedup[i], pareto_accuracy[i]), textcoords="offset points", xytext=(0,10), ha='center')
@@ -413,4 +464,28 @@ def plot_pruning_pareto(stats: List[Pruned_model_stats_t], filename: str, map_ke
     ax.set_title("Pareto front for different sparsities at different layer-groups", pad=20)
     fig.savefig(filename, format="svg")
     plt.close(fig)
-    print(pareto_sparsities)
+
+def copy_pareto_folders(parent_folder: str,
+                        pareto_stats: List[Pruned_model_stats_t],
+                        dest_parent_folder: str
+    ):
+    # Create parent destination folder if it doesn't already exist
+    os.makedirs(dest_parent_folder, exist_ok=True)
+
+    # For each pareto point 
+    for stat in pareto_stats:
+        # Configure the destination folder
+        curr_pareto_folder = os.path.join(parent_folder, stat["model_id"])
+        dest_pareto_folder = os.path.join(dest_parent_folder, stat["model_id"])
+        os.mkdir(dest_pareto_folder)
+
+        # Move the model and checkpoint files to the new folder and rename them so
+        # the contents of all files are uniform.
+        model_files = glob.iglob(os.path.join(curr_pareto_folder, "*.model"))
+        checkpoint_files = glob.iglob(os.path.join(curr_pareto_folder, "*.checkpoint"))
+        for model_file, checkpoint_file in zip(model_files, checkpoint_files):
+            if os.path.isfile(model_file) and os.path.isfile(checkpoint_file):
+                shutil.copy2(model_file, os.path.join(dest_pareto_folder, "model.pth"))
+                shutil.copy2(checkpoint_file, os.path.join(dest_pareto_folder, "checkpoint.pth"))
+            else:
+                print('F')

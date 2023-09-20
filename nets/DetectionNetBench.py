@@ -1,6 +1,6 @@
 import math
 import time
-from typing import Dict, Tuple, List, Optional, Callable
+from typing import Dict, Tuple, List, Optional, Callable, Union
 import copy
 import warnings
 
@@ -54,7 +54,7 @@ class DetectionNetBench():
                  model_id: str,
                  model: Optional[nn.Module] = None,
                  model_path: Optional[str] = None,
-                 config: DefaultTrainingConfig = DefaultTrainingConfig(),
+                 config: Union[DefaultTrainingConfig, str] = DefaultTrainingConfig(),
                  checkpoint_path: Optional[str] = None,
                  load_only_weights: bool = False
             ) -> None:
@@ -100,6 +100,11 @@ class DetectionNetBench():
             raise Exception("One the arguments: model, model_path should not be none")
         if model is not None and model_path is not None:
             raise Exception("Only one of the arguments model, model_path is allowed to be None")
+        
+        if isinstance(config, str):
+            temp_config = DefaultTrainingConfig()
+            temp_config.load(config)
+            config = temp_config
 
         # Decide what methods can be executed based on the arguments provided
         if (config.root_train_dir and config.json_train_labels and

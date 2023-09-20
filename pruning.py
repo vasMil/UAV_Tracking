@@ -60,39 +60,42 @@ SSD_LAYERS = [
 ]
 
 def prune_ssd(ssd: Detection_SSD,
-              ssd_checkpoint_filename: str,
               sparsities: Tuple[float, float, float, float],
-              checkpoint_folder: str,
-              save_checkpoint_step: int = 10,
-              calc_metrics_step: int = 10,
-              finetuning_epochs: int = 80,
-              learning_rate: float = 0.001,
-              batch_size: int = 64
-):
+              config: DefaultTrainingConfig,
+              model_path: str
+    ):
     """
-    Prunes and finetunes SSD.
-    A structured layer-wise pruning method will be used.
-    The layer-wise idea can be found here: https://arxiv.org/abs/1811.08342.
+    Prunes an SSD model, resets its checkpoint and training configuration and saves the pruned model.
+
+    A structured group-layer-wise pruning method will be used.
+    The group-layer-wise idea can be found here: https://arxiv.org/abs/1811.08342.
     We simplify the method above only on how the sparsity is introduced to the network.
-    Instead of training the model using an L1-norm loss function, the applying a threashold
-    for each layer and pruning (in a structured manner) the filters with the highest sparsity,
+    Instead of training the model using an L1-norm loss function, then applying a threshold
+    for each layer and lastly pruning (in a structured manner) the filters with the highest sparsity,
     we follow the methodology described in this paper: https://arxiv.org/abs/2301.12900.
     Thus we utilize the regularization function provided by the library they introduce and apply
     it after each training epoch, to force a more "organized" sparsity.
 
     Args:
-    - ssd: The Detection_SSD object you want to prune. It should have the weights, based on which
-    the model wil be pruned, already loaded.
-    - ssd_checkpoint_filename: The filename of the checkpoint whose weights will be pruned. This name
-    will be used as part of the name of each checkpoint that is going to be saved.
-    (ex. pretrained60_sparse80, that means it has been pretrained for 60 epochs and then sparsly trained for another 80)
+    - ssd: The Detection_SSD object you want to prune. The weights that will be used to decide which filters to prune,
+    should have been already loaded to the model.
     - sparsities: The sparsities (percentage of filters to be pruned) for each of the 4 layers.
-    - checkpoint_folder: The parent folder where all finetuning checkpoints will be saved. The .model file is the whole
-    model as torch.save() stores it and can be used to instanciate a DetectionNetBench object.
-    - save_checkpoint_step: Number of epochs between two consecutive saved checkpoints.
-    - finetunin_epochs: Number of finetuning training epochs to perform after pruning.
-    - learning_rate: The learning rate to use for the finetuning.
-    - barch_size: The batch size to use for the finetuning.
+    - config: The training config that will be used for the finetuning process. It contains info like the learning rate.
+    It will be used to reset model's losses and mAPs and reconfigure the training config.
+    - model_path: The path to save model at (including the name of the model filename).
+    The .model file that will be output is the whole model as torch.save() stores it.
+    It can be used to instanciate a DetectionNetBench object.
+
+    Proposed config:
+    `
+    config = DefaultTrainingConfig(\
+                default_batch_size = 64,\
+                sgd_learning_rate=0.001,\
+                scheduler_milestones=[],\
+                scheduler_gamma=1,\
+                losses_plot_ylabel="Sum of localization (Smooth L1 loss) and classification (Softmax loss)"\
+            )
+    `
     """
     ssd.model.eval()
     # Make all layers trainable, so tracing succeeds
@@ -128,32 +131,78 @@ def prune_ssd(ssd: Detection_SSD,
         # Make sure inference still works
         with torch.no_grad():
             ssd.model(example_inputs)
-
-    ##############
-    # Finetuning #
-    ##############
-    # Change the training parameters of the network
-    config = DefaultTrainingConfig(
-        default_batch_size=batch_size,
-        sgd_learning_rate=learning_rate,
-        scheduler_milestones=[],
-        scheduler_gamma=1,
-        losses_plot_ylabel=ssd.losses_plot_ylabel
-    )
+    
     ssd.reset(config)
-    ssd_checkpoint_filename = ssd_checkpoint_filename.split('.')[0]
-    partial_model_path = os.path.join(checkpoint_folder, ssd_checkpoint_filename)
-    ssd.save_model(partial_model_path + ".model")
-    step = math.gcd(save_checkpoint_step, calc_metrics_step, finetuning_epochs)
-    for i in range(0, finetuning_epochs, step):
+    ssd.save_model(model_path + ".model")
+    ssd.config.save(os.path.join(os.path.dirname(model_path), "training_config.json"))
+
+def sparse_training_ssd(ssd: Detection_SSD,
+                        num_sparse_epochs: int,
+                        parent_folder: str,
+                        checkpoint_folder: str,
+                        checkpoint_filename: str
+    ):
+    ssd.reset()
+    # Make all layers trainable
+    for p in ssd.model.parameters():
+        p.requires_grad_(True)
+
+    # Define a Group Pruner in order to utilize its regularizer
+    pruner = tp.GroupNormPruner(
+        ssd.model,
+        example_inputs=torch.rand([1,3,144,256]).to(device=ssd.device),
+        importance=tp.importance.GroupNormImportance(p=2)
+    )
+
+    ssd.save_model(os.path.join(parent_folder, "initialized.model"))
+    ssd.save_checkpoint(os.path.join(parent_folder, "initialized.checkpoint"))
+    
+    # Training Loop
+    step = 10
+    for epoch in range(0, num_sparse_epochs, 10):
+        ssd.train(step, pruner.regularize)
+        ssd.calculate_metrics(True)
+        ssd.save_checkpoint(os.path.join(checkpoint_folder, f"{checkpoint_filename}_sparse{epoch+step}.checkpoint"))
+        ssd.plot_losses(os.path.join(checkpoint_folder, "losses.png"))
+        ssd.plot_mAPs(os.path.join(checkpoint_folder, "map50.png"), "map_50")
+        ssd.plot_mAPs(os.path.join(checkpoint_folder, "map75.png"), "map_75")
+
+def finetuning(ssd: DetectionNetBench,
+               epochs: int,
+               finetuning_folder_to_save_checkpoints: str,
+               checkpoint_prefix_name: str,
+               save_checkpoint_step: int = 10,
+               calc_metrics_step: int = 10
+    ) -> None:
+    """
+    Finetunes a pruned SSD model.
+
+    Args:
+    - ssd: The DetectionNetBench object with the loaded SSD model and the correct checkpoint, you want to finetune on.
+    - epochs: The number of epochs to finetune for.
+    - finetuning_folder_to_save_checkpoints: The folder where all finetuning checkpoints will be saved.
+    - checkpoint_prefix_name: The prefix name to be used for each checkpoint. This name may specify important information
+    about the whole process the model went through before reaching this point.
+    An example would be: `pretrained250_sparse270`, which indicates that the model has been trained with all its weights
+    for 250 epochs and then it was sparsly trained for another 270 epochs.
+    This prefix will result to a checkpoint filename like: `pretrained250_sparse270_finetuned.checkpoint`
+    - save_checkpoint_step: Number of epochs between two consecutive saved checkpoints.
+    - calc_metrics_step: Number of epochs between two consecutive calculations of the metrics.
+    to be used.
+    """
+    curr_epoch = ssd.epoch
+    checkpoint_prefix = (checkpoint_prefix_name + "_") if checkpoint_prefix_name else ""
+    step = math.gcd(save_checkpoint_step, calc_metrics_step, epochs)
+    for i in range(0, epochs, step):
         ssd.train(step)
         if (i % calc_metrics_step) == 0:
             ssd.calculate_metrics(True)
-            ssd.plot_losses(f"{checkpoint_folder}/losses.png")
-            ssd.plot_mAPs(f"{checkpoint_folder}/map50.png", "map_50")
-            ssd.plot_mAPs(f"{checkpoint_folder}/map75.png", "map_75")
+            ssd.plot_losses(f"{finetuning_folder_to_save_checkpoints}/losses.png")
+            ssd.plot_mAPs(f"{finetuning_folder_to_save_checkpoints}/map50.png", "map_50")
+            ssd.plot_mAPs(f"{finetuning_folder_to_save_checkpoints}/map75.png", "map_75")
         if i and ((i+step) % save_checkpoint_step) == 0:
-            ssd.save_checkpoint(f"{partial_model_path}_finetuned{i+step}.checkpoint")
+            ssd.save_checkpoint(os.path.join(finetuning_folder_to_save_checkpoints,
+                                             f"{checkpoint_prefix}finetuned{curr_epoch+i+step}.checkpoint"))
 
 def count_layers_params(model: nn.Module) -> List[int]:
     seen_submodules = []

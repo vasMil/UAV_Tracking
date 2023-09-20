@@ -71,6 +71,13 @@ class DefaultTrainingConfig():
         self.prof_repeat = prof_repeat
         self.losses_plot_ylabel = losses_plot_ylabel
 
+    def save(self, filename: str):
+        with open(filename, 'w') as json_file:
+            json.dump(self.__dict__, json_file)
+
+    def load(self, filename: str):
+        with open(filename, 'r') as json_file:
+            self.__dict__ = json.load(json_file)
 
 class DefaultCoSimulatorConfig():
     def __init__(self,

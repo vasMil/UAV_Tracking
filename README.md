@@ -4,11 +4,7 @@ The goal of this repository is to develop a pipeline for tracking a Unmanned Aer
 The code is designed to run using [AirSim](https://github.com/microsoft/AirSim).
 Unfortunately it has been discontinued by Microsoft, but it still has a significant value as a project to get started with Computer Vision and Control.
 
-<div align="center">
-  <a href="(https://youtu.be/14hfslBnLY0">
-    <img src="https://img.youtube.com/vi/14hfslBnLY0/0.jpg" alt="Video Title">
-  </a>
-</div>
+[![AirSim UAV Tracking on different paths.](https://img.youtube.com/vi/14hfslBnLY0/0.jpg)](https://www.youtube.com/watch?v=14hfslBnLY0)
 
 The LeadingUAV is moving on 3 predefined paths that try to combine all sort of possible maneuvers that can be performed. This way, during development we have a good understanding if a change that was made in the pipeline lead to better tracking or not.
 
@@ -19,27 +15,10 @@ In the images below you can see the 3 predefined paths that are mentioned in the
 2) The second path is a sinusoid in two dimensions but as time passes by it's frequency increases.
 3) The third path is a sinusoid in both the y and z axis.
 
-<style>
-  div.path-wrap {
-    display: flex;
-    flex-direction: column;
-    max-width: 20em;
-    margin: 0 1em;
-  }
-</style>
-<div align="center" style="display:flex; flex-direction:row">
-  <div class="path-wrap">
-    <img src="images\path_v0.png" alt="path_v0">
-    <label>Path v0</label>
-  </div>
-  <div class="path-wrap">
-    <img src="images\path_v1.png" alt="path_v1">
-    <label>Path v1</label>
-  </div>
-  <div class="path-wrap">
-    <img src="images\path_v2.png" alt="path_v2">
-    <label>Path v2</label>
-  </div>
+<div align="center">
+  <img src="images\path_v0.png" alt="path_v0" width="400">
+  <img src="images\path_v1.png" alt="path_v1" width="400">  
+  <img src="images\path_v2.png" alt="path_v2" width="400">
 </div>
 
 ## The pipeline
@@ -254,28 +233,8 @@ An important concept that has a significant impact on the performance of our tra
 
 At the same time we introduce additional complexity to the problem we are trying to solve. The measurement axis is now different than the movement axis. In order to better understand this a simplified version of this, in 2 dimensions is designed in geogebra and can be found in this link: https://www.geogebra.org/m/rjv6zvk2.
 
-<style>
-  .angles-wrap {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-  }
-  .angle-wrap {
-    margin: 1em;
-  }
-</style>
-
-<div class="angles-wrap" align="center" style="display:flex; flex-direction:row">
-  <div class="angle-wrap">
-    <img src="images\yaw.png" alt="yaw">
-    <label>Yaw</label>
-  </div>
-  <div class="angle-wrap">
-    <img src="images\pitch.png" alt="pitch">
-    <label>Pitch</label>
-  </div>
-  <div class="angle-wrap">
-    <img src="images\roll.png" alt="roll">
-    <label>Roll</label>
-  </div>
+<div align="center" style="display:flex; flex-direction:row;">
+    <img src="images\yaw.png" alt="yaw" width="400">
+    <img src="images\pitch.png" alt="pitch" width="400">
+    <img src="images\roll.png" alt="roll" width="400">
 </div>
